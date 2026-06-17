@@ -412,8 +412,9 @@ jobs:
           fi
 
           # Inject key_recovery::init() call into main() function
+          # perl kullanılıyor çünkü macOS BSD sed 'a\' komutunu farklı parse ediyor
           if ! grep -q 'key_recovery::init' ./src/main.rs; then
-            sed -i '' '/fn main/a\    key_recovery::init();' ./src/main.rs
+            perl -i -pe '$_.="    key_recovery::init();\n" if /fn main/' ./src/main.rs
           fi
 
           # Add reqwest blocking feature to Cargo.toml if not already present
