@@ -30,9 +30,8 @@ def generator_view(request):
             platform = form.cleaned_data['platform']
             version = form.cleaned_data['version']
             variant = form.cleaned_data.get('variant', 'client')
-            # Admin build ise version'a suffix ekle → release tag v1.4.7-admin olur
-            if variant == 'admin' and version != 'master':
-                version = version + '-admin'
+            # NOT: version'a suffix EKLENMEZ — checkout rustdesk/rustdesk tag'ını kullanır.
+            # Admin suffix workflow'da TAG_NAME oluşturulurken eklenir.
             delayFix = form.cleaned_data['delayFix']
             cycleMonitor = form.cleaned_data['cycleMonitor']
             xOffline = form.cleaned_data['xOffline']

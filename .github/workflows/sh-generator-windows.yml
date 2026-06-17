@@ -767,7 +767,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          TAG_NAME="v${{ env.VERSION }}"
+          # Admin variant ise release tag'a -admin suffix ekle
+          VARIANT="${{ env.variant }}"
+          if [ "$VARIANT" = "admin" ]; then
+            TAG_NAME="v${{ env.VERSION }}-admin"
+          else
+            TAG_NAME="v${{ env.VERSION }}"
+          fi
           echo "=== Release Configuration ==="
           echo "TAG_NAME: $TAG_NAME"
           echo "FILENAME: ${{ env.filename }}"
