@@ -646,16 +646,16 @@ jobs:
           Remove-Item ./SignOutput/unsigned_files.zip
           Remove-Item ./SignOutput/signed_files.zip
 
-      - name: rename rustdesk.exe to filename.exe
+      - name: rename rustdesk.exe to filename-x86.exe
         run: |
-          mv ./SignOutput/rustdesk.exe "./SignOutput/${{ env.filename }}.exe" || echo "rustdesk"
+          mv ./SignOutput/rustdesk.exe "./SignOutput/${{ env.filename }}-x86.exe" || echo "rustdesk"
 
       - name: Upload Actions Artifact Backup
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: build-output-${{ env.uuid }}
-          path: ./SignOutput/${{ env.filename }}.exe
+          path: ./SignOutput/${{ env.filename }}-x86.exe
           retention-days: 7
 
       - name: Create GitHub Release and Upload Artifacts
