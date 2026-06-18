@@ -163,10 +163,6 @@ def generator_view(request):
             decodedCustom['enable-lan-discovery'] = 'N' if denyLan else 'Y'
             #decodedCustom['direct-server'] = 'Y' if enableDirectIP else 'N'
             decodedCustom['allow-auto-disconnect'] = 'Y' if autoClose else 'N'
-            # UDP / Relay ayarları — her zaman yaz (form'a bağlı değil)
-            decodedCustom['enable-udp-punch'] = 'Y'
-            decodedCustom['enable-ipv6-punch'] = 'N'
-            decodedCustom['disable-udp'] = 'N'
             if permissionsDorO == "default":
                 decodedCustom['default-settings']['access-mode'] = permissionsType
                 decodedCustom['default-settings']['enable-keyboard'] = 'Y' if enableKeyboard else 'N'
@@ -189,6 +185,10 @@ def generator_view(request):
                 decodedCustom['default-settings']['allow-always-relay'] = 'Y'
                 decodedCustom['default-settings']['force-always-relay'] = 'N'
                 decodedCustom['default-settings']['stop-service'] = 'N'
+                # UDP / Relay ayarları
+                decodedCustom['default-settings']['enable-udp-punch'] = 'Y'
+                decodedCustom['default-settings']['enable-ipv6-punch'] = 'N'
+                decodedCustom['default-settings']['disable-udp'] = 'N'
             else:
                 decodedCustom['override-settings']['access-mode'] = permissionsType
                 decodedCustom['override-settings']['enable-keyboard'] = 'Y' if enableKeyboard else 'N'
@@ -211,6 +211,10 @@ def generator_view(request):
                 decodedCustom['override-settings']['allow-always-relay'] = 'Y'
                 decodedCustom['override-settings']['force-always-relay'] = 'N'
                 decodedCustom['override-settings']['stop-service'] = 'N'
+                # UDP / Relay ayarları
+                decodedCustom['override-settings']['enable-udp-punch'] = 'Y'
+                decodedCustom['override-settings']['enable-ipv6-punch'] = 'N'
+                decodedCustom['override-settings']['disable-udp'] = 'N'
 
             for line in defaultManual.splitlines():
                 if '=' in line:
