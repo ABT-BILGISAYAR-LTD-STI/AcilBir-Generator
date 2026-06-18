@@ -185,10 +185,6 @@ def generator_view(request):
                 decodedCustom['default-settings']['allow-always-relay'] = 'Y'
                 decodedCustom['default-settings']['force-always-relay'] = 'N'
                 decodedCustom['default-settings']['stop-service'] = 'N'
-                # UDP / Relay ayarları
-                decodedCustom['default-settings']['enable-udp-punch'] = 'Y'
-                decodedCustom['default-settings']['enable-ipv6-punch'] = 'N'
-                decodedCustom['default-settings']['disable-udp'] = 'N'
             else:
                 decodedCustom['override-settings']['access-mode'] = permissionsType
                 decodedCustom['override-settings']['enable-keyboard'] = 'Y' if enableKeyboard else 'N'
@@ -211,10 +207,6 @@ def generator_view(request):
                 decodedCustom['override-settings']['allow-always-relay'] = 'Y'
                 decodedCustom['override-settings']['force-always-relay'] = 'N'
                 decodedCustom['override-settings']['stop-service'] = 'N'
-                # UDP / Relay ayarları
-                decodedCustom['override-settings']['enable-udp-punch'] = 'Y'
-                decodedCustom['override-settings']['enable-ipv6-punch'] = 'N'
-                decodedCustom['override-settings']['disable-udp'] = 'N'
 
             for line in defaultManual.splitlines():
                 if '=' in line:
