@@ -714,8 +714,8 @@ jobs:
             echo "Creating new release $TAG_NAME..."
             gh release create "$TAG_NAME" \
               --repo "${{ github.repository }}" \
-              --title "${{ env.appname }} v${{ env.VERSION }}" \
-              --notes "Custom generated client v${{ env.VERSION }}"
+              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || '' }}" \
+              --notes "Custom generated ${{ env.variant == 'admin' && 'admin' || 'client' }} v${{ env.VERSION }}"
           else
             echo "Release $TAG_NAME already exists, uploading assets..."
           fi
