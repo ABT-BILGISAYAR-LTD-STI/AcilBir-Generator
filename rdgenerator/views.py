@@ -163,6 +163,10 @@ def generator_view(request):
             decodedCustom['enable-lan-discovery'] = 'N' if denyLan else 'Y'
             #decodedCustom['direct-server'] = 'Y' if enableDirectIP else 'N'
             decodedCustom['allow-auto-disconnect'] = 'Y' if autoClose else 'N'
+            # UDP / Relay ayarları — her zaman yaz (form'a bağlı değil)
+            decodedCustom['enable-udp-punch'] = 'Y'
+            decodedCustom['enable-ipv6-punch'] = 'N'
+            decodedCustom['disable-udp'] = 'N'
             if permissionsDorO == "default":
                 decodedCustom['default-settings']['access-mode'] = permissionsType
                 decodedCustom['default-settings']['enable-keyboard'] = 'Y' if enableKeyboard else 'N'
@@ -182,6 +186,9 @@ def generator_view(request):
                 decodedCustom['default-settings']['enable-remote-printer'] = 'Y' if enablePrinter else 'N'
                 decodedCustom['default-settings']['enable-camera'] = 'Y' if enableCamera else 'N'
                 decodedCustom['default-settings']['enable-terminal'] = 'Y' if enableTerminal else 'N'
+                decodedCustom['default-settings']['allow-always-relay'] = 'Y'
+                decodedCustom['default-settings']['force-always-relay'] = 'N'
+                decodedCustom['default-settings']['stop-service'] = 'N'
             else:
                 decodedCustom['override-settings']['access-mode'] = permissionsType
                 decodedCustom['override-settings']['enable-keyboard'] = 'Y' if enableKeyboard else 'N'
@@ -201,6 +208,9 @@ def generator_view(request):
                 decodedCustom['override-settings']['enable-remote-printer'] = 'Y' if enablePrinter else 'N'
                 decodedCustom['override-settings']['enable-camera'] = 'Y' if enableCamera else 'N'
                 decodedCustom['override-settings']['enable-terminal'] = 'Y' if enableTerminal else 'N'
+                decodedCustom['override-settings']['allow-always-relay'] = 'Y'
+                decodedCustom['override-settings']['force-always-relay'] = 'N'
+                decodedCustom['override-settings']['stop-service'] = 'N'
 
             for line in defaultManual.splitlines():
                 if '=' in line:
