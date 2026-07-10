@@ -103,7 +103,8 @@ def generator_view(request):
             myuuid = str(uuid.uuid4())
             protocol = _settings.PROTOCOL
             host = request.get_host()
-            full_url = f"{protocol}://{host}" if getattr(_settings, 'GENURL', False) else f"{_settings.PROTOCOL}://{request.get_host()}"
+            # --- Fix: Port in URL for setup / download-zip
+            full_url = f"{protocol}://{host}" if _settings.GENURL else f"{_settings.PROTOCOL}://{request.get_host()}"
             try:
                 iconfile = form.cleaned_data.get('iconfile')
                 if not iconfile:
@@ -695,8 +696,11 @@ def cleanup_secrets(request):
     return HttpResponse("Cleanup successful", status=200)
 
 def get_zip(request):
-    filename = os.path.basename(request.GET['filename'])
-    file_path = os.path.join('temp_zips', filename)
+    filename = request.GET['filename']
+    base_dir = os.path.abspath('temp_zips')
+    file_path = os.path.abspath(os.path.join(base_dir, filename))
+    if not file_path.startswith(base_dir + os.sep):
+        return HttpResponseForbidden("Invalid filename")
     with open(file_path, 'rb') as file:
         response = HttpResponse(file, headers={
             'Content-Type': 'application/zip',
