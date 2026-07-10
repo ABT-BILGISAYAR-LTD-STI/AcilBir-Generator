@@ -494,6 +494,12 @@ jobs:
           sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.urlLink }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
           sed -i -e "s|https://rustdesk.com/privacy.html|${{ env.urlLink }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
 
+      - name: override download link for Linux platform
+        shell: bash
+        run: |
+          DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Linux"
+          echo "downloadLink=${DOWNLOAD_URL}" >> $GITHUB_ENV
+
       - name: change download link to custom
         if: env.downloadLink != 'https://rustdesk.com/download'
         continue-on-error: true
@@ -502,6 +508,8 @@ jobs:
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/mobile/pages/connection_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./src/ui/index.tis
+          sed -i -e 's|&download_url|"${{ env.downloadLink }}"|' ./src/updater.rs
+          sed -i -e 's|$downloadUrl/$downloadFile|${{ env.downloadLink }}|' ./flutter/lib/desktop/widgets/update_progress.dart
 
       - name: fix connection delay
         continue-on-error: true
@@ -543,7 +551,16 @@ jobs:
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/hidecm.diff
             git apply hidecm.diff
         
-      # removeNewVersionNotif adımı kaldırıldı — güncelleme bildirimi her zaman aktif
+      - name: enable update notifications for custom clients
+        continue-on-error: true
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 1
+          max_attempts: 3
+          shell: bash
+          command: |
+            wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/master/.github/patches/enableCustomClientUpdate.diff
+            git apply enableCustomClientUpdate.diff
 
       - name: Restore bridge files
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'

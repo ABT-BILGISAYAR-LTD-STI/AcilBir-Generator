@@ -1,0 +1,16 @@
+diff --git a/flutter/lib/desktop/pages/desktop_home_page.dart b/flutter/lib/desktop/pages/desktop_home_page.dart
+--- a/flutter/lib/desktop/pages/desktop_home_page.dart
++++ b/flutter/lib/desktop/pages/desktop_home_page.dart
+@@ -424,10 +424,9 @@
+   }
+ 
+   Widget buildHelpCards(String updateUrl) {
+-    if (!bind.isCustomClient() &&
+-        updateUrl.isNotEmpty &&
++    if (updateUrl.isNotEmpty &&
+         !isCardClosed &&
+-        bind.mainUriPrefixSync().contains('rustdesk')) {
++        true) {
+       return buildInstallCard(
+           "Status",
+           "${translate("new-version-of-{${bind.mainGetAppNameSync()}}-tip")} (${bind.mainGetNewVersion()}).",

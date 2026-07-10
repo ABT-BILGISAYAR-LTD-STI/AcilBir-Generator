@@ -566,6 +566,12 @@ jobs:
         run: |
           sed -i -e 's|com.carriez.flutter_hbb|${{ env.androidappid }}|' ./flutter/android/app/build.gradle
 
+      - name: override download link for Android platform
+        shell: bash
+        run: |
+          DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Android"
+          echo "downloadLink=${DOWNLOAD_URL}" >> $GITHUB_ENV
+
       - name: change download link to custom
         if: env.downloadLink != 'https://rustdesk.com/download'
         continue-on-error: true
@@ -631,7 +637,16 @@ jobs:
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/hidecm.diff
             git apply hidecm.diff
 
-      # removeNewVersionNotif adımı kaldırıldı — güncelleme bildirimi her zaman aktif
+      - name: enable update notifications for custom clients
+        continue-on-error: true
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 1
+          max_attempts: 3
+          shell: bash
+          command: |
+            wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/master/.github/patches/enableCustomClientUpdate.diff
+            git apply enableCustomClientUpdate.diff
 
       - name: replace flutter icons
         if: ${{ env.iconlink_url != 'false' }}

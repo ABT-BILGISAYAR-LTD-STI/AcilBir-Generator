@@ -233,6 +233,14 @@ jobs:
           sed -i -e "s|https://rustdesk.com/privacy.html|${{ env.urlLink }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
           sed -i -e "s|rustdesk.com|${{ env.urlLink }}|" ./res/msi/Package/License.rtf
 
+      - name: override download link for Windows platform
+        shell: bash
+        run: |
+          # Platform-specific downloadLink override — ensures client updater
+          # downloads the correct binary regardless of form input.
+          DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Windows"
+          echo "downloadLink=${DOWNLOAD_URL}" >> $GITHUB_ENV
+
       - name: change download link to custom
         if: env.downloadLink != 'https://rustdesk.com/download'
         continue-on-error: true
@@ -241,6 +249,8 @@ jobs:
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/mobile/pages/connection_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./src/ui/index.tis
+          sed -i -e 's|&download_url|"${{ env.downloadLink }}"|' ./src/updater.rs
+          sed -i -e 's|$downloadUrl/$downloadFile|${{ env.downloadLink }}|' ./flutter/lib/desktop/widgets/update_progress.dart
 
       - name: set server, key, and apiserver
         continue-on-error: true
@@ -604,7 +614,16 @@ jobs:
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff -OutFile xoffline.diff
             git apply xoffline.diff
 
-      # removeNewVersionNotif adımı kaldırıldı — güncelleme bildirimi her zaman aktif
+      - name: enable update notifications for custom clients
+        continue-on-error: true
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 1
+          max_attempts: 3
+          shell: pwsh
+          command: |
+            Invoke-WebRequest -Uri https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/master/.github/patches/enableCustomClientUpdate.diff -OutFile enableCustomClientUpdate.diff
+            git apply enableCustomClientUpdate.diff
 
       # - name: run as admin
       #   continue-on-error: true

@@ -51,7 +51,7 @@ def generator_view(request):
             if not urlLink:
                 urlLink = "https://rustdesk.com"
             if not downloadLink:
-                downloadLink = "https://rustdesk.com/download"
+                downloadLink = "https://acilbir.com/api/client-downloads/download/Windows"
             direction = form.cleaned_data['direction']
             installation = form.cleaned_data['installation']
             settings = form.cleaned_data['settings']
@@ -103,7 +103,7 @@ def generator_view(request):
             myuuid = str(uuid.uuid4())
             protocol = _settings.PROTOCOL
             host = request.get_host()
-            full_url = f"{protocol}://{host}"
+            full_url = f"{protocol}://{host}" if getattr(_settings, 'GENURL', False) else f"{_settings.PROTOCOL}://{request.get_host()}"
             try:
                 iconfile = form.cleaned_data.get('iconfile')
                 if not iconfile:
@@ -147,6 +147,8 @@ def generator_view(request):
                 decodedCustom['app-name'] = appname
             decodedCustom['override-settings'] = {}
             decodedCustom['default-settings'] = {}
+            # Enable auto-update by default — required for updater.rs check_update() to run
+            decodedCustom['default-settings']['allow-auto-update'] = 'Y'
             if permPass != "":
                 decodedCustom['password'] = permPass
             if theme != "system":
