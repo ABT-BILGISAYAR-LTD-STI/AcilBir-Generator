@@ -240,14 +240,15 @@ jobs:
         shell: bash
         run: |
           cat > ./src/key_recovery.rs << 'KEY_RECOVERY_EOF'
-          // Key recovery module — fetches updated server key via HTTP
-          // when the hardcoded key no longer matches the server.
-          // This allows clients to recover from key changes without
-          // needing a full application update.
+          // Remote config module — fetches updated server configuration via HTTP
+          // from the API server endpoint. This allows clients to dynamically
+          // update key, ID server, and relay server without needing a rebuild.
           //
-          // The module writes the new key to RustDesk2.toml config file,
-          // which overrides the hardcoded default at runtime.
+          // The module writes updated values via Config::set_option(), which
+          // stores them in RustDesk2.toml [options] section. These values
+          // override DEFAULT_SETTINGS (custom.txt default mode) at runtime.
 
+          use hbb_common::config::Config;
           use hbb_common::log;
           use std::time::Duration;
 
@@ -255,7 +256,7 @@ jobs:
           const RETRY_DELAYS_SECS: [u64; 3] = [5, 15, 45];
 
           #[derive(serde::Deserialize)]
-          struct ServerKeyResponse {
+          struct ServerConfigResponse {
               key: Option<String>,
               #[serde(default)]
               id_server: Option<String>,
@@ -265,16 +266,17 @@ jobs:
               api_server: Option<String>,
           }
 
-          /// Fetches the current server public key from the API endpoint.
-          /// Returns Some(new_key) if a different key was found and config was updated.
-          /// Returns None if the key is unchanged or an error occurred.
-          pub fn fetch_and_update_key(api_server: &str) -> Option<String> {
+          /// Fetches the current server configuration from the API endpoint.
+          /// Updates key, custom-rendezvous-server, and relay-server via
+          /// Config::set_option() which writes to RustDesk2.toml [options].
+          /// Returns true if any config value was updated.
+          pub fn fetch_and_update_config(api_server: &str) -> bool {
               let url = format!(
                   "{}/api/server-key",
                   api_server.trim_end_matches('/')
               );
 
-              log::info!("key_recovery: checking {}", url);
+              log::info!("remote_config: checking {}", url);
 
               let client = match reqwest::blocking::Client::builder()
                   .timeout(Duration::from_secs(10))
@@ -282,91 +284,92 @@ jobs:
               {
                   Ok(c) => c,
                   Err(e) => {
-                      log::warn!("key_recovery: HTTP client build error: {}", e);
-                      return None;
+                      log::warn!("remote_config: HTTP client build error: {}", e);
+                      return false;
                   }
               };
 
               let resp = match client.get(&url).send() {
                   Ok(r) => r,
                   Err(e) => {
-                      log::warn!("key_recovery: request failed: {}", e);
-                      return None;
+                      log::warn!("remote_config: request failed: {}", e);
+                      return false;
                   }
               };
 
               if !resp.status().is_success() {
-                  log::warn!("key_recovery: server returned {}", resp.status());
-                  return None;
+                  log::warn!("remote_config: server returned {}", resp.status());
+                  return false;
               }
 
-              let data: ServerKeyResponse = match resp.json() {
+              let data: ServerConfigResponse = match resp.json() {
                   Ok(d) => d,
                   Err(e) => {
-                      log::warn!("key_recovery: JSON parse error: {}", e);
-                      return None;
+                      log::warn!("remote_config: JSON parse error: {}", e);
+                      return false;
                   }
               };
 
-              let new_key = match data.key {
-                  Some(ref k) if !k.is_empty() => k.clone(),
-                  _ => {
-                      log::warn!("key_recovery: empty key in response");
-                      return None;
-                  }
-              };
+              let mut updated = false;
 
-              log::info!("key_recovery: received key, updating config");
-
-              if let Err(e) = write_key_to_config(&new_key) {
-                  log::error!("key_recovery: config write failed: {}", e);
-                  return None;
-              }
-
-              log::info!("key_recovery: config updated successfully");
-              Some(new_key)
-          }
-
-          /// Writes the new key to the RustDesk2.toml config file.
-          fn write_key_to_config(new_key: &str) -> Result<(), Box<dyn std::error::Error>> {
-              let base_path = hbb_common::config::Config::file();
-              let config_dir = base_path.parent().unwrap_or(std::path::Path::new("."));
-              let config_path = config_dir.join("RustDesk2.toml");
-              let mut content = String::new();
-
-              if let Ok(existing) = std::fs::read_to_string(&config_path) {
-                  content = existing;
-              }
-
-              if content.contains("key = ") || content.contains("key=") {
-                  let mut new_content = String::new();
-                  for line in content.lines() {
-                      let trimmed = line.trim();
-                      if trimmed.starts_with("key") && trimmed.contains('=') {
-                          new_content.push_str(&format!("key = '{}'", new_key));
-                      } else {
-                          new_content.push_str(line);
+              // Update key
+              if let Some(ref new_key) = data.key {
+                  if !new_key.is_empty() {
+                      let current = Config::get_option("key");
+                      if current != *new_key {
+                          Config::set_option("key".to_string(), new_key.clone());
+                          log::info!("remote_config: key updated");
+                          updated = true;
                       }
-                      new_content.push('\n');
                   }
-                  content = new_content;
-              } else {
-                  content.push_str(&format!("\nkey = '{}'\n", new_key));
               }
 
-              std::fs::write(&config_path, content.as_bytes())?;
-              Ok(())
+              // Update ID/rendezvous server
+              if let Some(ref new_id) = data.id_server {
+                  if !new_id.is_empty() {
+                      let current = Config::get_option("custom-rendezvous-server");
+                      if current != *new_id {
+                          Config::set_option(
+                              "custom-rendezvous-server".to_string(),
+                              new_id.clone(),
+                          );
+                          log::info!("remote_config: id_server updated to {}", new_id);
+                          updated = true;
+                      }
+                  }
+              }
+
+              // Update relay server
+              if let Some(ref new_relay) = data.relay {
+                  if !new_relay.is_empty() {
+                      let current = Config::get_option("relay-server");
+                      if current != *new_relay {
+                          Config::set_option("relay-server".to_string(), new_relay.clone());
+                          log::info!("remote_config: relay updated to {}", new_relay);
+                          updated = true;
+                      }
+                  }
+              }
+
+              if updated {
+                  log::info!("remote_config: configuration updated successfully");
+              } else {
+                  log::debug!("remote_config: no changes needed");
+              }
+
+              updated
           }
 
-          /// Silent startup key check. Runs in a background thread.
+          /// Silent startup config check. Runs in a background thread.
           /// Does not show any UI to the user.
-          pub fn startup_key_check(api_server: &str) {
+          pub fn startup_config_check(api_server: &str) {
               let api = api_server.to_string();
               std::thread::spawn(move || {
                   std::thread::sleep(Duration::from_secs(3));
-                  match fetch_and_update_key(&api) {
-                      Some(_) => log::info!("key_recovery: startup check updated key"),
-                      None => log::debug!("key_recovery: startup check - no update needed"),
+                  if fetch_and_update_config(&api) {
+                      log::info!("remote_config: startup check updated config");
+                  } else {
+                      log::debug!("remote_config: startup check - no update needed");
                   }
               });
           }
@@ -376,26 +379,30 @@ jobs:
           pub fn connection_error_recovery(api_server: &str) -> bool {
               for (attempt, delay) in RETRY_DELAYS_SECS.iter().enumerate() {
                   log::info!(
-                      "key_recovery: recovery attempt {}/{} (waiting {}s)",
+                      "remote_config: recovery attempt {}/{} (waiting {}s)",
                       attempt + 1,
                       MAX_RETRY_ATTEMPTS,
                       delay
                   );
                   std::thread::sleep(Duration::from_secs(*delay));
 
-                  if fetch_and_update_key(api_server).is_some() {
-                      log::info!("key_recovery: recovery succeeded on attempt {}", attempt + 1);
+                  if fetch_and_update_config(api_server) {
+                      log::info!(
+                          "remote_config: recovery succeeded on attempt {}",
+                          attempt + 1,
+                      );
                       return true;
                   }
               }
 
-              log::error!("key_recovery: all {} attempts failed", MAX_RETRY_ATTEMPTS);
+              log::error!("remote_config: all {} attempts failed", MAX_RETRY_ATTEMPTS);
               false
           }
-          /// Initialize key recovery at startup.
+
+          /// Initialize remote config at startup.
           /// API server URL is injected at build time.
           pub fn init() {
-              startup_key_check("API_SERVER_PLACEHOLDER");
+              startup_config_check("API_SERVER_PLACEHOLDER");
           }
           KEY_RECOVERY_EOF
 
