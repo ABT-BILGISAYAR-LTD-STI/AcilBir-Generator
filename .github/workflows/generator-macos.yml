@@ -223,6 +223,10 @@ jobs:
           if [ "${{ env.variant }}" = "admin" ]; then
             sed -i '' 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
           fi
+          # Beta variant: güncelleme endpoint'ini beta kanalına yönlendir
+          if [ "${{ env.variant }}" = "beta" ]; then
+            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          fi
           
           wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
           python allowCustom.py
@@ -910,6 +914,8 @@ jobs:
           VARIANT="${{ env.variant }}"
           if [ "$VARIANT" = "admin" ]; then
             TAG_NAME="v${{ env.VERSION }}-admin"
+          elif [ "$VARIANT" = "beta" ]; then
+            TAG_NAME="v${{ env.VERSION }}-beta"
           else
             TAG_NAME="v${{ env.VERSION }}"
           fi
@@ -949,8 +955,8 @@ jobs:
             echo "Creating new release $TAG_NAME..."
             gh release create "$TAG_NAME" \
               --repo "${{ github.repository }}" \
-              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || '' }}" \
-              --notes "Custom generated ${{ env.variant == 'admin' && 'admin' || 'client' }} v${{ env.VERSION }}"
+              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
+              --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
           else
             echo "Release $TAG_NAME already exists, uploading assets..."
           fi
