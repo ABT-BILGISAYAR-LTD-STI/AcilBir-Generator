@@ -124,7 +124,7 @@ jobs:
           sudo apt-get install -y imagemagick
 
       - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
+        if: ${{ env.VERSION != 'master' && env.VERSION != 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -132,7 +132,7 @@ jobs:
           submodules: recursive
 
       - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
+        if: ${{ env.VERSION == 'master' || env.VERSION == 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -977,7 +977,7 @@ jobs:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
       - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
+        if: ${{ env.VERSION != 'master' && env.VERSION != 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -985,7 +985,7 @@ jobs:
           submodules: recursive
 
       - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
+        if: ${{ env.VERSION == 'master' || env.VERSION == 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -1118,7 +1118,7 @@ jobs:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
       - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
+        if: ${{ env.VERSION != 'master' && env.VERSION != 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -1126,7 +1126,7 @@ jobs:
           submodules: recursive
 
       - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
+        if: ${{ env.VERSION == 'master' || env.VERSION == 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk

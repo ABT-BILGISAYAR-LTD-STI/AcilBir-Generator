@@ -106,7 +106,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
+        if: ${{ env.VERSION != 'master' && env.VERSION != 'nightly' }}
         uses: actions/checkout@v4
         with:
             repository: rustdesk/rustdesk
@@ -114,7 +114,7 @@ jobs:
             submodules: recursive
   
       - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
+        if: ${{ env.VERSION == 'master' || env.VERSION == 'nightly' }}
         uses: actions/checkout@v4
         with:
             repository: rustdesk/rustdesk

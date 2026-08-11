@@ -124,7 +124,7 @@ jobs:
           echo "STATUS_URL=${{ env.apiServer }}/api/updategh" >> $env:GITHUB_ENV
 
       - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
+        if: ${{ env.VERSION != 'master' && env.VERSION != 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -132,7 +132,7 @@ jobs:
           submodules: recursive
 
       - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
+        if: ${{ env.VERSION == 'master' || env.VERSION == 'nightly' }}
         uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
