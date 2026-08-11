@@ -40,7 +40,7 @@ HTML_401_PAGE = """<!DOCTYPE html>
         <div class="icon">🔒</div>
         <h1>Yetkisiz Erişim (401)</h1>
         <p>Bu alana erişebilmek için <strong>AcilBir.com Admin Paneli</strong> üzerinde yetkili oturum açmış olmanız veya geçerli bir gizli erişim anahtarına sahip olmanız gerekmektedir.</p>
-        <a href="{login_url}" class="btn">Admin Paneline Giriş Yap</a>
+        <a href="__LOGIN_URL__" class="btn">Admin Paneline Giriş Yap</a>
         <div class="tip">Gizli anahtarınız varsa: <code>?secret=ŞİFRE</code> kullanabilirsiniz.</div>
     </div>
 </body>
@@ -91,7 +91,8 @@ class RdgenAuthMiddleware:
             # Web page requests return custom HTML 401 Access Denied page with return redirect
             from django.http import HttpResponse
             login_target = f"{LOGIN_URL}?redirect={quote(request.build_absolute_uri())}"
-            return HttpResponse(HTML_401_PAGE.format(login_url=login_target), status=401)
+            page_html = HTML_401_PAGE.replace('__LOGIN_URL__', login_target)
+            return HttpResponse(page_html, status=401)
 
         # Attach auth payload to request for downstream views if needed
         request.jwt_user = payload_or_err if isinstance(payload_or_err, dict) else {}
