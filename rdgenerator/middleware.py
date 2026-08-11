@@ -16,14 +16,42 @@ EXEMPT_PATHS = [
 ]
 
 LOGIN_URL = os.environ.get('LOGIN_URL', 'https://acilbir.com/console/#/login')
-ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'False').lower() in ['true', '1', 't']
+ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'True').lower() in ['true', '1', 't']
+
+HTML_401_PAGE = """<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erişim Engellendi — AcilBir.com</title>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 40px; max-width: 450px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+        .icon { font-size: 48px; margin-bottom: 16px; }
+        h1 { font-size: 22px; font-weight: 700; margin: 0 0 12px 0; color: #ef4444; }
+        p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+        .btn { display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 14px; }
+        .tip { font-size: 12px; color: #64748b; margin-top: 20px; }
+        code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; color: #60a5fa; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">🔒</div>
+        <h1>Yetkisiz Erişim (401)</h1>
+        <p>Bu alana erişebilmek için <strong>AcilBir.com Admin Paneli</strong> üzerinde yetkili oturum açmış olmanız veya geçerli bir gizli erişim anahtarına sahip olmanız gerekmektedir.</p>
+        <a href="https://acilbir.com/console/#/login" class="btn">Admin Paneline Giriş Yap</a>
+        <div class="tip">Gizli anahtarınız varsa: <code>?secret=ŞİFRE</code> kullanabilirsiniz.</div>
+    </div>
+</body>
+</html>"""
 
 
 class RdgenAuthMiddleware:
     """
     Middleware that enforces JWT / Cookie SSO Authentication across rdgen.
     
-    - Web generator pages (/ and /generator) redirect unauthenticated users to acilbir.com/login.
+    - Web generator pages (/ and /generator) block unauthenticated users with a 401 Access Denied page.
     - JSON API endpoints (/api/generate and /api/status) return HTTP 401 JSON error for unauthenticated requests.
     - Callback and public download endpoints are exempt.
     """
@@ -60,9 +88,9 @@ class RdgenAuthMiddleware:
                     "details": payload_or_err
                 }, status=401)
 
-            # Web page requests redirect to login page or return 403
-            redirect_target = f"{LOGIN_URL}?redirect={quote(request.build_absolute_uri())}"
-            return HttpResponseRedirect(redirect_target)
+            # Web page requests return custom HTML 401 Access Denied page
+            from django.http import HttpResponse
+            return HttpResponse(HTML_401_PAGE, status=401)
 
         # Attach auth payload to request for downstream views if needed
         request.jwt_user = payload_or_err if isinstance(payload_or_err, dict) else {}
