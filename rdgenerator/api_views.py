@@ -163,3 +163,200 @@ def api_status(request):
         response_data['platform'] = platform
 
     return JsonResponse(response_data)
+
+
+from .models import ClientProfile
+
+def profile_to_dict(profile, request=None):
+    base_url = ""
+    if request:
+        base_url = f"{_settings.PROTOCOL}://{request.get_host()}"
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "variant": profile.variant,
+        "exename": profile.exename,
+        "appname": profile.appname,
+        "compname": profile.compname,
+        "androidappid": profile.androidappid,
+        "serverIP": profile.serverIP,
+        "key": profile.key,
+        "apiServer": profile.apiServer,
+        "urlLink": profile.urlLink,
+        "downloadLink": profile.downloadLink,
+        "icon_url": f"{base_url}{profile.icon_image.url}" if profile.icon_image else "",
+        "logo_url": f"{base_url}{profile.logo_image.url}" if profile.logo_image else "",
+        "privacy_url": f"{base_url}{profile.privacy_image.url}" if profile.privacy_image else "",
+        "iconbase64": profile.iconbase64 or "",
+        "logobase64": profile.logobase64 or "",
+        "privacybase64": profile.privacybase64 or "",
+        "config_data": profile.config_data or {},
+        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+    }
+
+
+def api_profiles_list_create(request):
+    """
+    GET /api/profiles - List all saved client profiles
+    POST /api/profiles - Create a new client profile
+    """
+    if request.method == 'GET':
+        profiles = ClientProfile.objects.all().order_by('-updated_at')
+        return JsonResponse({"success": True, "profiles": [profile_to_dict(p, request) for p in profiles]})
+
+    elif request.method == 'POST':
+        try:
+            if request.content_type and 'application/json' in request.content_type:
+                data = json.loads(request.body)
+            else:
+                data = request.POST.dict()
+        except Exception as e:
+            return JsonResponse({"success": False, "error": f"Invalid payload: {str(e)}"}, status=400)
+
+        name = data.get('name')
+        if not name:
+            return JsonResponse({"success": False, "error": "Profile name is required."}, status=400)
+
+        profile = ClientProfile(
+            name=name,
+            variant=data.get('variant', 'client'),
+            exename=data.get('exename', 'rustdesk'),
+            appname=data.get('appname', 'rustdesk'),
+            compname=data.get('compname', 'Purslane Ltd'),
+            androidappid=data.get('androidappid', 'com.carriez.flutter_hbb'),
+            serverIP=data.get('serverIP', ''),
+            key=data.get('key', ''),
+            apiServer=data.get('apiServer', ''),
+            urlLink=data.get('urlLink', ''),
+            downloadLink=data.get('downloadLink', ''),
+            iconbase64=data.get('iconbase64', ''),
+            logobase64=data.get('logobase64', ''),
+            privacybase64=data.get('privacybase64', ''),
+            config_data=data.get('config_data', {}) if isinstance(data.get('config_data'), dict) else {}
+        )
+
+        if 'iconfile' in request.FILES:
+            profile.icon_image = request.FILES['iconfile']
+        if 'logofile' in request.FILES:
+            profile.logo_image = request.FILES['logofile']
+        if 'privacyfile' in request.FILES:
+            profile.privacy_image = request.FILES['privacyfile']
+
+        profile.save()
+        return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)}, status=201)
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+def api_profile_detail_update_delete(request, profile_id):
+    """
+    GET /api/profiles/<id> - Fetch profile
+    POST/PUT /api/profiles/<id> - Update profile
+    DELETE /api/profiles/<id> - Delete profile
+    """
+    try:
+        profile = ClientProfile.objects.get(id=profile_id)
+    except ClientProfile.DoesNotExist:
+        return JsonResponse({"success": False, "error": "Profile not found"}, status=404)
+
+    if request.method == 'GET':
+        return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)})
+
+    elif request.method in ['POST', 'PUT']:
+        try:
+            if request.content_type and 'application/json' in request.content_type:
+                data = json.loads(request.body)
+            else:
+                data = request.POST.dict()
+        except Exception as e:
+            return JsonResponse({"success": False, "error": f"Invalid payload: {str(e)}"}, status=400)
+
+        for field in ['name', 'variant', 'exename', 'appname', 'compname', 'androidappid',
+                      'serverIP', 'key', 'apiServer', 'urlLink', 'downloadLink',
+                      'iconbase64', 'logobase64', 'privacybase64']:
+            if field in data:
+                setattr(profile, field, data[field])
+
+        if 'config_data' in data and isinstance(data['config_data'], dict):
+            profile.config_data = data['config_data']
+
+        if 'iconfile' in request.FILES:
+            profile.icon_image = request.FILES['iconfile']
+        if 'logofile' in request.FILES:
+            profile.logo_image = request.FILES['logofile']
+        if 'privacyfile' in request.FILES:
+            profile.privacy_image = request.FILES['privacyfile']
+
+        profile.save()
+        return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)})
+
+    elif request.method == 'DELETE':
+        profile.delete()
+        return JsonResponse({"success": True, "message": "Profile deleted"})
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+def api_profile_build(request, profile_id):
+    """
+    POST /api/profiles/<id>/build
+    Triggers build using profile's stored settings and images.
+    Accepts optional overrides in JSON payload (e.g. platform, version).
+    """
+    if request.method != 'POST':
+        return JsonResponse({"success": False, "error": "Method not allowed. Use POST."}, status=405)
+
+    try:
+        profile = ClientProfile.objects.get(id=profile_id)
+    except ClientProfile.DoesNotExist:
+        return JsonResponse({"success": False, "error": "Profile not found"}, status=404)
+
+    overrides = {}
+    if request.body:
+        try:
+            overrides = json.loads(request.body)
+        except Exception:
+            pass
+
+    # Merge profile fields + config_data + overrides
+    params = {
+        'sh_secret_field': _settings.SH_SECRET,
+        'platform': overrides.get('platform', 'windows'),
+        'version': overrides.get('version', '1.4.9'),
+        'variant': profile.variant or 'client',
+        'exename': profile.exename or 'rustdesk',
+        'appname': profile.appname or 'rustdesk',
+        'compname': profile.compname or 'Purslane Ltd',
+        'androidappid': profile.androidappid or 'com.carriez.flutter_hbb',
+        'serverIP': profile.serverIP or '',
+        'key': profile.key or '',
+        'apiServer': profile.apiServer or '',
+        'urlLink': profile.urlLink or '',
+        'downloadLink': profile.downloadLink or '',
+        'iconbase64': profile.iconbase64 or '',
+        'logobase64': profile.logobase64 or '',
+        'privacybase64': profile.privacybase64 or '',
+    }
+
+    if profile.config_data and isinstance(profile.config_data, dict):
+        params.update(profile.config_data)
+
+    params.update(overrides)
+
+    cleaned, errors = validate_generate_params(params)
+    if errors:
+        return JsonResponse({"success": False, "error": "Validation errors", "details": errors}, status=400)
+
+    full_url = f"{_settings.PROTOCOL}://{request.get_host()}" if _settings.GENURL else f"{_settings.PROTOCOL}://{request.get_host()}"
+
+    result = generate_custom_client(cleaned, full_url)
+
+    if result['success']:
+        result['status_url'] = f"/api/status?uuid={result['uuid']}&platform={result['platform']}&filename={result['filename']}"
+        result['profile_id'] = profile.id
+        result['profile_name'] = profile.name
+        return JsonResponse(result)
+    else:
+        return JsonResponse({"success": False, "error": result['error']}, status=result.get('status_code', 500))
+

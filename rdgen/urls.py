@@ -36,6 +36,13 @@ urlpatterns = [
     url(r'^get_zip',views.get_zip),
     url(r'^cleanzip',views.cleanup_secrets),
     # JSON API endpoints
-    url(r'^api/generate$',api_views.api_generate),
-    url(r'^api/status$',api_views.api_status),
+    url(r'^api/generate$', api_views.api_generate),
+    url(r'^api/status$', api_views.api_status),
+    url(r'^api/profiles$', api_views.api_profiles_list_create),
+    url(r'^api/profiles/(?P<profile_id>\d+)$', api_views.api_profile_detail_update_delete),
+    url(r'^api/profiles/(?P<profile_id>\d+)/build$', api_views.api_profile_build),
 ]
+
+from django.conf import settings
+from django.conf.urls.static import static
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
