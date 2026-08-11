@@ -90,7 +90,11 @@ class RdgenAuthMiddleware:
 
             # Web page requests return custom HTML 401 Access Denied page with return redirect
             from django.http import HttpResponse
-            login_target = f"{LOGIN_URL}?redirect={quote(request.build_absolute_uri())}"
+            target_uri = request.build_absolute_uri()
+            protocol = getattr(_settings, 'PROTOCOL', 'https')
+            if protocol == 'https' and target_uri.startswith('http://'):
+                target_uri = 'https://' + target_uri[7:]
+            login_target = f"{LOGIN_URL}?redirect={quote(target_uri)}"
             page_html = HTML_401_PAGE.replace('__LOGIN_URL__', login_target)
             return HttpResponse(page_html, status=401)
 

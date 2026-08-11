@@ -43,6 +43,11 @@ ALLOWED_HOSTS = [GENURL, 'localhost', '127.0.0.1'] if GENURL else ['*']
 CSRF_TRUSTED_ORIGINS = [
     f"{PROTOCOL}://{GENURL}" if GENURL else "https://localhost",
 ]
+
+# Reverse Proxy HTTPS settings
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 # Application definition
 
 INSTALLED_APPS = [
