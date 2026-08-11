@@ -835,6 +835,13 @@ jobs:
         run: |
           cp ./res/rustdesk-${{ env.VERSION }}-0-x86_64.pkg.tar.zst ./output/${{ env.filename }}-${{ matrix.job.arch }}.pkg.tar.zst
 
+      - name: Upload deb artifact for appimage and flatpak
+        uses: actions/upload-artifact@v4
+        if: env.UPLOAD_ARTIFACT == 'true'
+        with:
+          name: ${{ env.filename }}-${{ matrix.job.arch }}.deb
+          path: ./output/${{ env.filename }}-${{ matrix.job.arch }}.deb
+
       - name: Create GitHub Release and Upload Artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
@@ -843,7 +850,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Admin variant ise release tag'a -admin suffix ekle
           VARIANT="${{ env.variant }}"
           if [ "$VARIANT" = "admin" ]; then
             TAG_NAME="v${{ env.VERSION }}-admin"
@@ -871,7 +877,6 @@ jobs:
              ARTIFACTS=$(find ./SignOutput -name "${{ env.filename }}.*" -type f 2>/dev/null || true)
           fi
           if [ -z "$ARTIFACTS" ]; then
-             # Fallback: deb/rpm/pkg.tar.zst bul ama debug ve rustdesk- prefix'li duplikatları hariç tut
              ARTIFACTS=$(find . \( -name "*.deb" -o -name "*.rpm" -o -name "*.pkg.tar.zst" \) -type f -not -path "*/.git/*" -not -name "rustdesk-debug-*" -not -name "rustdesk-[0-9]*" 2>/dev/null | grep -v "temp_zips" || true)
           fi
           
@@ -883,6 +888,150 @@ jobs:
           
           echo "=== Found artifacts ==="
           echo "$ARTIFACTS"
+
+          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
+            echo "Creating new release $TAG_NAME..."
+            gh release create "$TAG_NAME" \
+              --repo "${{ github.repository }}" \
+              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
+              --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
+          else
+            echo "Release $TAG_NAME already exists, uploading assets..."
+          fi
+
+          for ARTIFACT_PATH in $ARTIFACTS; do
+            BASENAME=$(basename "$ARTIFACT_PATH")
+            echo "Uploading $BASENAME..."
+            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" \
+              --repo "${{ github.repository }}" \
+              --clobber || echo "::warning::Failed to upload $BASENAME"
+          done
+          
+          AUTH_TOKEN="${{ env.token }}"
+          if [ -z "$AUTH_TOKEN" ]; then
+            AUTH_TOKEN="${{ secrets.GH_PAT }}"
+          fi
+          
+          for ARTIFACT_PATH in $ARTIFACTS; do
+            BASENAME=$(basename "$ARTIFACT_PATH")
+            RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$BASENAME"
+            echo "Callback for $BASENAME: $RELEASE_URL"
+            
+            CALLBACK_SUCCESS=false
+            for attempt in 1 2 3; do
+              echo "Go API callback attempt $attempt..."
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+                -H "Authorization: Bearer $AUTH_TOKEN" \
+                -d "github_release_url=$RELEASE_URL" \
+                -d "uuid=${{ env.uuid }}" \
+                -d "filename=$BASENAME" \
+                -d "version=${{ env.VERSION }}" \
+                -d "variant=${{ env.variant }}" \
+                "${{ env.apiServer }}/api/save_custom_client" || echo "000")
+              
+              echo "Go API callback HTTP status: $HTTP_CODE"
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+                CALLBACK_SUCCESS=true
+                echo "✅ Go API callback succeeded for $BASENAME"
+                break
+              else
+                echo "⚠️ Go API callback attempt $attempt failed (HTTP $HTTP_CODE)"
+                [ "$attempt" -lt 3 ] && sleep 3
+              fi
+            done
+            
+            if [ "$CALLBACK_SUCCESS" != "true" ]; then
+              echo "::warning::Go API callback failed for $BASENAME after 3 attempts"
+            fi
+            
+            if [[ "${{ env.rdgen }}" == 'true' ]]; then
+              curl -s -o /dev/null -X POST \
+                -H "Authorization: Bearer $AUTH_TOKEN" \
+                -d "uuid=${{ env.uuid }}" \
+                -d "filename=$BASENAME" \
+                "${{ env.genurl }}/save_custom_client" || true
+            fi
+          done
+
+  build-appimage:
+    name: Build appimage ${{ matrix.job.target }}
+    needs: [build-rustdesk-linux]
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { target: x86_64-unknown-linux-gnu, arch: x86_64 }
+          - { target: aarch64-unknown-linux-gnu, arch: aarch64 }
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - uses: actions/download-artifact@v4
+        with:
+          name: encrypted-secrets-zip
+
+      - name: Load Secrets
+        uses: ./.github/actions/decrypt-secrets
+        with:
+          zip_password: ${{ secrets.ZIP_PASSWORD }}
+
+      - name: Checkout source code
+        if: ${{ env.VERSION != 'master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: refs/tags/${{ env.VERSION }}
+          submodules: recursive
+
+      - name: Checkout source code
+        if: ${{ env.VERSION == 'master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          submodules: recursive
+
+      - name: Download Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.filename }}-${{ matrix.job.arch }}.deb
+          path: .
+
+      - name: Rename Binary
+        run: |
+          mv ${{ env.filename }}-${{ matrix.job.arch }}.deb appimage/rustdesk.deb
+
+      - name: icon stuff
+        if: ${{ env.iconlink_url != 'false' }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          shell: bash
+          command: |
+            mv ./res/icon.ico ./res/icon.ico.bak
+            mv ./res/icon.png ./res/icon.png.bak
+            mv ./res/tray-icon.ico ./res/tray-icon.ico.bak
+            wget -O ./res/icon.png ${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }}
+            mv ./res/32x32.png ./res/32x32.png.bak
+            mv ./res/64x64.png ./res/64x64.png.bak
+            mv ./res/128x128.png ./res/128x128.png.bak
+            mv ./res/128x128@2x.png ./res/128x128@2x.png.bak
+            convert ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/icon.ico
+            convert ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/tray-icon.ico
+            cp ./res/icon.ico ./res/tray-icon.ico
+            convert ./res/icon.png -resize 32x32 ./res/32x32.png
+            convert ./res/icon.png -resize 64x64 ./res/64x64.png
+            convert ./res/icon.png -resize 128x128 ./res/128x128.png
+            convert ./res/128x128.png -resize 200% ./res/128x128@2x.png
+            cp ./src/ui.rs ./src/ui.rs.bak
+            b64=$(base64 < ./res/icon.png)
+            sed -i -e 's|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1r/+f2N9t3//r02/6+D5b0w4Xf4p4PZ1f5f/Ww3y+4c1D7D/r5eD//p/+/y7v0j7k1+Z///1v+b///y3//z/T2/9d//5v+v///+3+P5d5w7v/v0775d7b5P+w7y0N/0/w5N9b2/97v2j/xH+yP60P+b35T86b//x681944p3m5z+8f1r+P9d1+n5r+b//1b2+6D4Z///2n/7/+f+f8a6H5P0P//9Z/i6Z///n////3////5f5b4u06y9v5a38s5P9a4b373j/x/j5n/s7w7eP5X+/f0+b4O09/wz+/f9v/7b2z9/zL5n1/n66g/274a2x32v/a55v5P33////7779y04d7e/e7P7W/e/w3s5b1O3//2559Xv///32l7vP3X4/jP+2m9b7r/3X7a44f/m1v8f/dffr5/39s25n3X+/x3u5b+T////57d59H5/+s6z/////r2///p3y///e//z79x075+d9/26////v7n6ff3//+n4//////9f4f//v/+9///b7f1/f1/z7/g1f///x/t0/u772+f4e3//9///6+13b0O/f95/v/d9z9+e377/q+////53r+n///d///e/+ffv/+r/v/063f35x/97w7/////++75////6t///e///1////5/v///w37+f1/s/0/1///+r0Pz/ff//3/u57//////1v///9f06z///0/////f///+////+////4/9///1////f//////x+2+z7+233/b/n4f/+//////r70+b377//////9////r0f0//////n6/////+/w+b/9///////9f9v/////z+H//////t/t////u/789z/4f/////g7//////9f////b0/r+w/n//////5vv///r5+/v////9///v9/v+/++t/++//////////////////s3f/+/////////////////b9//+/////////////////f9//+/////////////////59//+/////////////////39//+/////////////////39//+/////////////////b9//+/////////////////z39+/7//////4/n/+n/+////++///////////////////+////3//////9///////7+9////v73+9v//////x/b3/6+z3u5b+e/56d5tH/1v+2v1v///////4///////////////////v///////9///////t/////+////e///27y/3y3X//////b0Pz0N/e/+ndb//x/b0u533///////57+1vb7///0//s+///////4/f7t/+//v//+3/+r/////j/+///////8b29L1t9P9p/8r7v6/8t/s/89//////6e5/u8v/////s169vb//////55tT/02f//////9n////////t56f5v//////////3n55+///////t/7///////////z9n///n////////v//////////4=|$b64|' ./src/ui.rs
+            b64=""
+
+            cat <<EOF > ./res/scalable.svg
+            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="$(identify -format "%w" "./res/icon.png")" height="$(identify -format "%h" "./res/icon.png")">
               <image width="$(identify -format "%w" "./res/icon.png")" height="$(identify -format "%h" "./res/icon.png")" xlink:href="data:image/png;base64,$(base64 -w 0 "./res/icon.png")"/>
             </svg>
             EOF
@@ -893,40 +1042,44 @@ jobs:
           sed -ie "s|rustdesk|${{ env.appname }}|g" appimage/*
           mv appimage/rustdesk.deb "appimage/${{ env.filename }}.deb"
 
-           # install libarchive-tools for bsdtar command used in AppImageBuilder.yml
           sudo apt-get update -y
-          # https://github.com/AppImage/AppImageKit/wiki/FUSE
           sudo apt-get install -y libarchive-tools libfuse2
-          # set-up appimage-builder
-          # https://github.com/AppImage/AppImageKit/issues/1395
           sudo pip3 install "setuptools_scm<10"
           sudo pip3 install git+https://github.com/rustdesk-org/appimage-builder.git
-          # run appimage-builder
           pushd appimage
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml
           sudo mv ./${{ env.appname }}-${{ env.VERSION }}-${{ matrix.job.arch }}.AppImage ./${{ env.filename }}-${{ matrix.job.arch }}.AppImage
 
-      - name: send file to rdgen server
-        if: ${{ env.rdgen == 'true' }}
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          retry_wait_seconds: 15
-          shell: bash
-          command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./appimage/${{ env.filename }}-${{ matrix.job.arch }}.AppImage" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+      - name: Create GitHub Release and Upload Artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VARIANT="${{ env.variant }}"
+          if [ "$VARIANT" = "admin" ]; then
+            TAG_NAME="v${{ env.VERSION }}-admin"
+          elif [ "$VARIANT" = "beta" ]; then
+            TAG_NAME="v${{ env.VERSION }}-beta"
+          else
+            TAG_NAME="v${{ env.VERSION }}"
+          fi
+
+          ARTIFACTS=$(find ./appimage -name "*.AppImage" -type f 2>/dev/null || true)
           
-      - name: send file to api server
-        if: ${{ env.rdgen == 'false' }}
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          retry_wait_seconds: 15
-          shell: bash
-          command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./appimage/${{ env.filename }}-${{ matrix.job.arch }}.AppImage" ${{ env.apiServer }}/api/save_custom_client
+          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
+            gh release create "$TAG_NAME" \
+              --repo "${{ github.repository }}" \
+              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
+              --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
+          fi
+
+          for ARTIFACT_PATH in $ARTIFACTS; do
+            BASENAME=$(basename "$ARTIFACT_PATH")
+            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true
+          done
 
   build-flatpak:
     name: Build flatpak ${{ matrix.job.target }}${{ matrix.job.suffix }}
@@ -946,7 +1099,6 @@ jobs:
             }
           - {
               target: aarch64-unknown-linux-gnu,
-              # try out newer flatpak since error of "error: Nothing matches org.freedesktop.Platform in remote flathub"
               distro: ubuntu22.04,
               on: ubuntu-22.04-arm,
               arch: aarch64,
@@ -981,7 +1133,7 @@ jobs:
           submodules: recursive
 
       - name: Download Binary
-        uses: actions/download-artifact@master
+        uses: actions/download-artifact@v4
         with:
           name: ${{ env.filename }}-${{ matrix.job.arch }}.deb
           path: .
@@ -1008,111 +1160,47 @@ jobs:
             apt-get update -y
             apt-get install -y git flatpak flatpak-builder
           run: |
-            # disable git safe.directory
             git config --global --add safe.directory "*"
             pushd /workspace
-            # flatpak deps
             flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-            # package
             pushd flatpak
             git clone https://github.com/flathub/shared-modules.git --depth=1
             flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk.json
             flatpak build-bundle ./repo ${{ env.filename }}-${{ matrix.job.arch }}.flatpak com.rustdesk.RustDesk
 
-      - name: send file to rdgen server
-        if: ${{ env.rdgen == 'true' }}
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          retry_wait_seconds: 15
-          shell: bash
-          command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./flatpak/${{ env.filename }}-${{ matrix.job.arch }}.flatpak" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
-          
-      - name: send file to api server
-        if: ${{ env.rdgen == 'false' }}
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          retry_wait_seconds: 15
-          shell: bash
-          command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./flatpak/${{ env.filename }}-${{ matrix.job.arch }}.flatpak" ${{ env.apiServer }}/api/save_custom_client
->>>>>>> upstream/master
+      - name: Create GitHub Release and Upload Artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          # Release yoksa oluştur, varsa sadece asset yükle
+          VARIANT="${{ env.variant }}"
+          if [ "$VARIANT" = "admin" ]; then
+            TAG_NAME="v${{ env.VERSION }}-admin"
+          elif [ "$VARIANT" = "beta" ]; then
+            TAG_NAME="v${{ env.VERSION }}-beta"
+          else
+            TAG_NAME="v${{ env.VERSION }}"
+          fi
+
+          ARTIFACTS=$(find ./flatpak -name "*.flatpak" -type f 2>/dev/null || true)
+          
           if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
-            echo "Creating new release $TAG_NAME..."
             gh release create "$TAG_NAME" \
               --repo "${{ github.repository }}" \
               --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
               --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
-          else
-            echo "Release $TAG_NAME already exists, uploading assets..."
           fi
 
-          # Tüm artifact'ları release'e yükle (varsa üzerine yaz)
           for ARTIFACT_PATH in $ARTIFACTS; do
             BASENAME=$(basename "$ARTIFACT_PATH")
-            echo "Uploading $BASENAME..."
-            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" \
-              --repo "${{ github.repository }}" \
-              --clobber || echo "::warning::Failed to upload $BASENAME"
-          done
-          
-          AUTH_TOKEN="${{ env.token }}"
-          if [ -z "$AUTH_TOKEN" ]; then
-            AUTH_TOKEN="${{ secrets.GH_PAT }}"
-          fi
-          
-          # Tüm artifact'lar için İndirme Portalı DB callback'i gönder
-          for ARTIFACT_PATH in $ARTIFACTS; do
-            BASENAME=$(basename "$ARTIFACT_PATH")
-            RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$BASENAME"
-            echo "Callback for $BASENAME: $RELEASE_URL"
-            
-            # 1. Go API callback — DB source of truth (her zaman çalışır)
-            CALLBACK_SUCCESS=false
-            for attempt in 1 2 3; do
-              echo "Go API callback attempt $attempt..."
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-                -H "Authorization: Bearer $AUTH_TOKEN" \
-                -d "github_release_url=$RELEASE_URL" \
-                -d "uuid=${{ env.uuid }}" \
-                -d "filename=$BASENAME" \
-                -d "version=${{ env.VERSION }}" \
-                -d "variant=${{ env.variant }}" \
-                "${{ env.apiServer }}/api/save_custom_client" || echo "000")
-              
-              echo "Go API callback HTTP status: $HTTP_CODE"
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                CALLBACK_SUCCESS=true
-                echo "✅ Go API callback succeeded for $BASENAME"
-                break
-              else
-                echo "⚠️ Go API callback attempt $attempt failed (HTTP $HTTP_CODE)"
-                [ "$attempt" -lt 3 ] && sleep 3
-              fi
-            done
-            
-            if [ "$CALLBACK_SUCCESS" != "true" ]; then
-              echo "::warning::Go API callback failed for $BASENAME after 3 attempts"
-            fi
-            
-            # 2. rdgen callback — sadece GithubRun status güncellemesi
-            if [[ "${{ env.rdgen }}" == 'true' ]]; then
-              curl -s -o /dev/null -X POST \
-                -H "Authorization: Bearer $AUTH_TOKEN" \
-                -d "uuid=${{ env.uuid }}" \
-                -d "filename=$BASENAME" \
-                "${{ env.genurl }}/save_custom_client" || true
-            fi
+            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true
           done
 
   cleanup:
-    needs: [build-rustdesk-linux]
+    needs: [build-rustdesk-linux, build-appimage, build-flatpak]
     runs-on: ubuntu-latest
     continue-on-error: true
     if: always()
