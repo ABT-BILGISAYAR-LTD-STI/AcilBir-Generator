@@ -1,4 +1,7 @@
-import jwt
+try:
+    import jwt
+except ImportError:
+    jwt = None
 import os
 from django.conf import settings as _settings
 
@@ -50,6 +53,9 @@ def verify_token(token):
     direct_keys = [k for k in direct_keys if k]
     if token in direct_keys:
         return True, {"sub": "system", "role": "admin", "is_api_key": True}
+
+    if not jwt:
+        return False, "PyJWT package not installed on server"
 
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
