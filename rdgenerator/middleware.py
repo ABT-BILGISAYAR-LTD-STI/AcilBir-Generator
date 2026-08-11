@@ -15,7 +15,7 @@ EXEMPT_PATHS = [
     '/get_zip',
 ]
 
-LOGIN_URL = os.environ.get('LOGIN_URL', 'https://acilbir.com/login')
+LOGIN_URL = os.environ.get('LOGIN_URL', 'https://acilbir.com/console/#/login')
 ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'True').lower() in ['true', '1', 't']
 
 
