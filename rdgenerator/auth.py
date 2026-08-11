@@ -57,17 +57,28 @@ def verify_token(token):
     if not jwt:
         return False, "PyJWT package not installed on server"
 
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        
-        # Check role if defined in token payload
-        user_role = payload.get('role') or payload.get('user_role') or ('admin' if payload.get('is_admin') else None)
-        
-        if ALLOWED_ROLES and user_role and user_role not in ALLOWED_ROLES:
-            return False, f"Role '{user_role}' is not authorized to access generator"
+    candidate_keys = [
+        os.environ.get('JWT_SECRET'),
+        os.environ.get('RUSTDESK_API_JWT_KEY'),
+        getattr(_settings, 'SECRET_KEY', None)
+    ]
+    candidate_keys = [k for k in candidate_keys if k]
 
-        return True, payload
-    except jwt.ExpiredSignatureError:
-        return False, "Token has expired"
-    except jwt.InvalidTokenError as e:
-        return False, f"Invalid token: {str(e)}"
+    last_error = "Invalid token signature"
+    for key in candidate_keys:
+        try:
+            payload = jwt.decode(token, key, algorithms=["HS256", "HS384", "HS512"])
+            user_role = payload.get('role') or payload.get('user_role') or ('admin' if payload.get('is_admin') else None)
+            
+            # If payload contains user_id / id or is_admin, consider valid admin user
+            if ALLOWED_ROLES and user_role and user_role not in ALLOWED_ROLES:
+                return False, f"Role '{user_role}' is not authorized to access generator"
+
+            return True, payload
+        except jwt.ExpiredSignatureError:
+            return False, "Token has expired"
+        except jwt.InvalidTokenError as e:
+            last_error = str(e)
+            continue
+
+    return False, f"Invalid token: {last_error}"
