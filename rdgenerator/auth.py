@@ -20,8 +20,8 @@ def extract_token(request):
     if auth_header.startswith('Bearer '):
         return auth_header.split(' ', 1)[1].strip()
 
-    # 2. Cookies (e.g. auth_token, token, jwt, session_token)
-    for cookie_name in ['auth_token', 'token', 'jwt', 'session_token']:
+    # 2. Cookies (SSO: auth_token, access_token from Vue dashboard; api-token from Go API)
+    for cookie_name in ['auth_token', 'access_token', 'api-token', 'token', 'jwt', 'session_token']:
         token = request.COOKIES.get(cookie_name)
         if token:
             return token.strip()

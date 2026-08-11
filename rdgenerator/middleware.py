@@ -1,6 +1,6 @@
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden
 from django.conf import settings as _settings
-from urllib.parse import quote
+from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qs
 import os
 from .auth import extract_token, verify_token
 
@@ -15,7 +15,7 @@ EXEMPT_PATHS = [
     '/get_zip',
 ]
 
-LOGIN_URL = os.environ.get('LOGIN_URL', 'https://acilbir.com/console/#/login')
+LOGIN_URL = os.environ.get('LOGIN_URL', 'https://acilbir.com/console/login')
 ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'True').lower() in ['true', '1', 't']
 
 HTML_401_PAGE = """<!DOCTYPE html>
@@ -47,6 +47,28 @@ HTML_401_PAGE = """<!DOCTYPE html>
 </html>"""
 
 
+def _get_cookie_domain(request):
+    """Derive the root domain for cross-subdomain cookie scope.
+
+    For 'generator.acilbir.com' → '.acilbir.com'
+    For 'localhost' or IP addresses → None (no domain scope)
+    """
+    host = request.get_host().split(':')[0]  # Strip port
+    parts = host.split('.')
+    if len(parts) >= 2 and not host.replace('.', '').isdigit():
+        return '.' + '.'.join(parts[-2:])
+    return None
+
+
+def _strip_token_from_url(absolute_uri):
+    """Remove the 'token' query parameter from a URL to produce a clean redirect target."""
+    parsed = urlparse(absolute_uri)
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    qs.pop('token', None)
+    clean_query = urlencode(qs, doseq=True)
+    return urlunparse(parsed._replace(query=clean_query))
+
+
 class RdgenAuthMiddleware:
     """
     Middleware that enforces JWT / Cookie SSO Authentication across rdgen.
@@ -54,6 +76,9 @@ class RdgenAuthMiddleware:
     - Web generator pages (/ and /generator) block unauthenticated users with a 401 Access Denied page.
     - JSON API endpoints (/api/generate and /api/status) return HTTP 401 JSON error for unauthenticated requests.
     - Callback and public download endpoints are exempt.
+    - When a ?token= query parameter is present (e.g. from dashboard SSO link),
+      the token is persisted as an auth_token cookie and the user is redirected
+      to a clean URL (without the token in the query string).
     """
 
     def __init__(self, get_response):
@@ -74,6 +99,35 @@ class RdgenAuthMiddleware:
         secret_param = request.GET.get('secret') or request.POST.get('secret')
         if secret_param and getattr(_settings, 'SH_SECRET', None) and secret_param == _settings.SH_SECRET:
             return self.get_response(request)
+
+        # ── Token-in-URL SSO flow ──
+        # Dashboard opens generator with ?token=... in a new tab.
+        # Persist it as a cookie and redirect to a clean URL so the token
+        # isn't leaked in referrer headers or browser history.
+        url_token = request.GET.get('token')
+        if url_token:
+            is_valid, _ = verify_token(url_token)
+            if is_valid:
+                clean_url = _strip_token_from_url(request.build_absolute_uri())
+                # Ensure HTTPS if PROTOCOL setting says so
+                protocol = getattr(_settings, 'PROTOCOL', 'https')
+                if protocol == 'https' and clean_url.startswith('http://'):
+                    clean_url = 'https://' + clean_url[7:]
+                response = HttpResponseRedirect(clean_url)
+                cookie_domain = _get_cookie_domain(request)
+                cookie_kwargs = {
+                    'max_age': 7 * 24 * 60 * 60,  # 7 days, matching Vue dashboard
+                    'path': '/',
+                    'httponly': False,  # Must be readable by frontend JS
+                    'samesite': 'Lax',
+                }
+                if cookie_domain:
+                    cookie_kwargs['domain'] = cookie_domain
+                if protocol == 'https':
+                    cookie_kwargs['secure'] = True
+                response.set_cookie('auth_token', url_token, **cookie_kwargs)
+                response.set_cookie('access_token', url_token, **cookie_kwargs)
+                return response
 
         # Extract and verify JWT / Bearer / Cookie token
         token = extract_token(request)
@@ -102,3 +156,4 @@ class RdgenAuthMiddleware:
         request.jwt_user = payload_or_err if isinstance(payload_or_err, dict) else {}
 
         return self.get_response(request)
+
