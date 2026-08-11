@@ -808,7 +808,6 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         env:
           VERSION: ''
-          Version: ''
         run: |
           $env:VERSION = ""
           $env:Version = ""
