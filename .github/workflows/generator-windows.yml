@@ -492,8 +492,9 @@ jobs:
       - name: allow custom.txt
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: pwsh
           command: |
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py -OutFile allowCustom.py
@@ -571,8 +572,9 @@ jobs:
         if: ${{ env.iconlink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: pwsh
           command: |
             Invoke-WebRequest -Uri ${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }} -OutFile ./res/iconx.png 
@@ -609,24 +611,13 @@ jobs:
         run: |
           sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
 
-      - name: add cycle monitors to toolbar
-        if: env.cycleMonitor == 'true'
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 1
-          max_attempts: 3
-          shell: pwsh
-          continue_on_error: true
-          command: |
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/cycle_monitor.diff -OutFile cycle_monitor.diff
-            git apply cycle_monitor.diff
-
       - name: use X for offline display instead of orange circle
         if: env.xOffline == 'true'
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: pwsh
           continue_on_error: true
           command: |
@@ -715,8 +706,9 @@ jobs:
         if: ${{ env.logolink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: pwsh
           continue_on_error: true
           command: |

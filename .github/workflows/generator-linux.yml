@@ -206,8 +206,9 @@ jobs:
         if: ${{ env.iconlink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: bash
           command: |
             mv ./res/icon.ico ./res/icon.ico.bak
@@ -266,8 +267,9 @@ jobs:
       - name: allow custom.txt
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: bash
           command: |
             sed -i -e 's|rs-ny.rustdesk.com|${{ env.server }}|' ./libs/hbb_common/src/config.rs
@@ -536,23 +538,13 @@ jobs:
         run: |
           sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
 
-      - name: add cycle monitors to toolbar
-        if: env.cycleMonitor == 'true'
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 1
-          max_attempts: 3
-          shell: bash
-          command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/cycle_monitor.diff
-            git apply cycle_monitor.diff
-
       - name: use X for offline display instead of orange circle
         if: env.xOffline == 'true'
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: bash
           command: |
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff
@@ -562,8 +554,9 @@ jobs:
         if: env.hidecm == 'true'
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 1
+          timeout_minutes: 5
           max_attempts: 3
+          retry_wait_seconds: 15
           shell: bash
           command: |
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/hidecm.diff
@@ -754,30 +747,33 @@ jobs:
               popd
             fi
 
-            # Change files names in the output .deb
-            # sed -ie "s|\(cp .* \)tmpdeb/usr/share/rustdesk/files/systemd/|\1tmpdeb/usr/share/rustdesk/files/systemd/${{ env.filename }}.service|g" build.py
-            # sed -ie "s|cp -r \(.\+\)\* \([^ ]\+\)/rustdesk|mv \1rustdesk \1${{ env.filename }}; cp -r \1\* \2/${{ env.filename }}|g" build.py
-            # sed -ie "s|\(tmpdeb/[^ ]*\)rustdesk|\1${{ env.filename }}|g" build.py
-            # sed -ie "s|Package: rustdesk|Package: ${{ env.filename }}|g" build.py
-            # sed -ie "s|RustDesk|${{ env.appname }}|g" res/rustdesk.desktop
-            # FILES=$(sed -ne "s~.*cp\s\(../\)\?\+\(.\+\.\(desktop\|service\)\)\s\+tmpdeb/.*~\2~p" build.py | sort | uniq)
-            # FILES=$(echo -e "$FILES\n$(ls --color=never res/DEBIAN/*)")
-            # for FILE in $(echo $FILES | sed "s/\n/ /g"); do
-            #   sed -ie "s|rustdesk|${{ env.filename }}|g" $FILE
-            # done
-            # for file in "./res/rpm-flutter.spec" "./res/rpm-flutter-suse.spec"; do
-            #   sed -ie "s|^\(URL:\s*\).*|\1${{ env.downloadLink }}|g" "$file"
-            #   sed -ie "s|^\(Vendor:\s*\).*|\1${{ env.compname }}|g" "$file"
-            #   sed -ie '/\${\?HBB}\?/!{/\(^Name:\|\/usr\|\/etc\|systemctl\)/s|rustdesk|${{ env.filename }}|g}' "$file"
-            #   sed -ie '/\${\?HBB}\?/{/^install/s|\(\/usr\/.*\/\)rustdesk|\1${{ env.filename }}|g}' "$file"
-            #   sed -ie '/\${\?HBB}\?/{/^mkdir/s|rustdesk|${{ env.filename }}|g}' "$file"
-            #   for extension in ".desktop" "-link.desktop" ".service"; do
-            #     sed -ie "/^%files$/i\mv %{buildroot}/usr/share/${{ env.filename }}/files/rustdesk$extension %{buildroot}/usr/share/${{ env.filename }}/files/${{ env.filename }}$extension" "$file"
-            #     sed -ie "/^%files$/i\sed -ie 's|RustDesk|${{ env.filename }}|g' %{buildroot}/usr/share/${{ env.filename }}/files/${{ env.filename }}$extension" "$file"
-            #     sed -ie "/^%files$/i\sed -ie 's|rustdesk|${{ env.filename }}|g' %{buildroot}/usr/share/${{ env.filename }}/files/${{ env.filename }}$extension" "$file"
-            #   done
-            #   sed -ie '/^%files$/i\\n' "$file"
-            # done
+            # Only run the whitelabeling steps if the custom app name is actually different
+            if [ "${{ env.appname }}" != "rustdesk" ]; then
+                # Change files names in the output .deb
+                sed -ie "s|\(cp .* \)tmpdeb/usr/share/rustdesk/files/systemd/|\1tmpdeb/usr/share/rustdesk/files/systemd/${{ env.appname }}.service|g" build.py
+                sed -ie "s|cp -r \(.\+\)\* \([^ ]\+\)/rustdesk|mv \1rustdesk \1${{ env.appname }}; cp -r \1\* \2/${{ env.appname }}|g" build.py
+                sed -ie "s|\(tmpdeb/[^ ]*\)rustdesk|\1${{ env.appname }}|g" build.py
+                sed -ie "s|Package: rustdesk|Package: ${{ env.appname }}|g" build.py
+                sed -ie "s|RustDesk|${{ env.appname }}|g" res/rustdesk.desktop
+                FILES=$(sed -ne "s~.*cp\s\(../\)\?\+\(.\+\.\(desktop\|service\)\)\s\+tmpdeb/.*~\2~p" build.py | sort | uniq)
+                FILES=$(echo -e "$FILES\n$(ls --color=never res/DEBIAN/*)")
+                for FILE in $(echo $FILES | sed "s/\n/ /g"); do
+                  sed -ie "s|rustdesk|${{ env.appname }}|g" $FILE
+                done
+                for file in "./res/rpm-flutter.spec" "./res/rpm-flutter-suse.spec"; do
+                  sed -ie "s|^\(URL:\s*\).*|\1${{ env.downloadLink }}|g" "$file"
+                  sed -ie "s|^\(Vendor:\s*\).*|\1${{ env.compname }}|g" "$file"
+                  sed -ie '/\${\?HBB}\?/!{/\(^Name:\|\/usr\|\/etc\|systemctl\)/s|rustdesk|${{ env.appname }}|g}' "$file"
+                  sed -ie '/\${\?HBB}\?/{/^install/s|\(\/usr\/.*\/\)rustdesk|\1${{ env.appname }}|g}' "$file"
+                  sed -ie '/\${\?HBB}\?/{/^mkdir/s|rustdesk|${{ env.appname }}|g}' "$file"
+                  for extension in ".desktop" "-link.desktop" ".service"; do
+                    sed -ie "/^%files$/i\mv %{buildroot}/usr/share/${{ env.appname }}/files/rustdesk$extension %{buildroot}/usr/share/${{ env.appname }}/files/${{ env.appname }}$extension" "$file"
+                    sed -ie "/^%files$/i\sed -ie 's|RustDesk|${{ env.appname }}|g' %{buildroot}/usr/share/${{ env.appname }}/files/${{ env.appname }}$extension" "$file"
+                    sed -ie "/^%files$/i\sed -ie 's|rustdesk|${{ env.appname }}|g' %{buildroot}/usr/share/${{ env.appname }}/files/${{ env.appname }}$extension" "$file"
+                  done
+                  sed -ie '/^%files$/i\\n' "$file"
+                done
+            fi
 
             python3 ./build.py --flutter --skip-cargo
             for name in *.deb; do
@@ -887,6 +883,164 @@ jobs:
           
           echo "=== Found artifacts ==="
           echo "$ARTIFACTS"
+              <image width="$(identify -format "%w" "./res/icon.png")" height="$(identify -format "%h" "./res/icon.png")" xlink:href="data:image/png;base64,$(base64 -w 0 "./res/icon.png")"/>
+            </svg>
+            EOF
+
+      - name: Build appimage package
+        shell: bash
+        run: |
+          sed -ie "s|rustdesk|${{ env.appname }}|g" appimage/*
+          mv appimage/rustdesk.deb "appimage/${{ env.filename }}.deb"
+
+           # install libarchive-tools for bsdtar command used in AppImageBuilder.yml
+          sudo apt-get update -y
+          # https://github.com/AppImage/AppImageKit/wiki/FUSE
+          sudo apt-get install -y libarchive-tools libfuse2
+          # set-up appimage-builder
+          # https://github.com/AppImage/AppImageKit/issues/1395
+          sudo pip3 install "setuptools_scm<10"
+          sudo pip3 install git+https://github.com/rustdesk-org/appimage-builder.git
+          # run appimage-builder
+          pushd appimage
+          sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml
+          sudo mv ./${{ env.appname }}-${{ env.VERSION }}-${{ matrix.job.arch }}.AppImage ./${{ env.filename }}-${{ matrix.job.arch }}.AppImage
+
+      - name: send file to rdgen server
+        if: ${{ env.rdgen == 'true' }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          shell: bash
+          command: |
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./appimage/${{ env.filename }}-${{ matrix.job.arch }}.AppImage" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+          
+      - name: send file to api server
+        if: ${{ env.rdgen == 'false' }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          shell: bash
+          command: |
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./appimage/${{ env.filename }}-${{ matrix.job.arch }}.AppImage" ${{ env.apiServer }}/api/save_custom_client
+
+  build-flatpak:
+    name: Build flatpak ${{ matrix.job.target }}${{ matrix.job.suffix }}
+    needs:
+      - build-rustdesk-linux
+    runs-on: ${{ matrix.job.on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - {
+              target: x86_64-unknown-linux-gnu,
+              distro: ubuntu22.04,
+              on: ubuntu-22.04,
+              arch: x86_64,
+              suffix: "",
+            }
+          - {
+              target: aarch64-unknown-linux-gnu,
+              # try out newer flatpak since error of "error: Nothing matches org.freedesktop.Platform in remote flathub"
+              distro: ubuntu22.04,
+              on: ubuntu-22.04-arm,
+              arch: aarch64,
+              suffix: "",
+            }
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - uses: actions/download-artifact@v4
+        with:
+          name: encrypted-secrets-zip
+
+      - name: Load Secrets
+        uses: ./.github/actions/decrypt-secrets
+        with:
+          zip_password: ${{ secrets.ZIP_PASSWORD }}
+
+      - name: Checkout source code
+        if: ${{ env.VERSION != 'master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: refs/tags/${{ env.VERSION }}
+          submodules: recursive
+
+      - name: Checkout source code
+        if: ${{ env.VERSION == 'master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          submodules: recursive
+
+      - name: Download Binary
+        uses: actions/download-artifact@master
+        with:
+          name: ${{ env.filename }}-${{ matrix.job.arch }}.deb
+          path: .
+
+      - name: Rename Binary
+        run: |
+          mv ${{ env.filename }}-${{ matrix.job.arch }}.deb flatpak/rustdesk.deb
+
+      - uses: rustdesk-org/run-on-arch-action@amd64-support
+        name: Build rustdesk flatpak package for ${{ matrix.job.arch }}
+        continue-on-error: true
+        timeout-minutes: 30
+        id: flatpak
+        with:
+          arch: ${{ matrix.job.arch }}
+          distro: ${{ matrix.job.distro }}
+          githubToken: ${{ github.token }}
+          setup: |
+            ls -l "${PWD}"
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+          shell: /bin/bash
+          install: |
+            apt-get update -y
+            apt-get install -y git flatpak flatpak-builder
+          run: |
+            # disable git safe.directory
+            git config --global --add safe.directory "*"
+            pushd /workspace
+            # flatpak deps
+            flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+            # package
+            pushd flatpak
+            git clone https://github.com/flathub/shared-modules.git --depth=1
+            flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk.json
+            flatpak build-bundle ./repo ${{ env.filename }}-${{ matrix.job.arch }}.flatpak com.rustdesk.RustDesk
+
+      - name: send file to rdgen server
+        if: ${{ env.rdgen == 'true' }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          shell: bash
+          command: |
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./flatpak/${{ env.filename }}-${{ matrix.job.arch }}.flatpak" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+          
+      - name: send file to api server
+        if: ${{ env.rdgen == 'false' }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          shell: bash
+          command: |
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./flatpak/${{ env.filename }}-${{ matrix.job.arch }}.flatpak" ${{ env.apiServer }}/api/save_custom_client
+>>>>>>> upstream/master
 
           # Release yoksa oluştur, varsa sadece asset yükle
           if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
