@@ -16,7 +16,7 @@ EXEMPT_PATHS = [
 ]
 
 LOGIN_URL = os.environ.get('LOGIN_URL', 'https://acilbir.com/console/#/login')
-ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'True').lower() in ['true', '1', 't']
+ENABLE_AUTH = os.environ.get('ENABLE_AUTH', 'False').lower() in ['true', '1', 't']
 
 
 class RdgenAuthMiddleware:
