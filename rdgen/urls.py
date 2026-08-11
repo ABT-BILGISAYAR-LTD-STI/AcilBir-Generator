@@ -38,6 +38,7 @@ urlpatterns = [
     # JSON API endpoints
     url(r'^api/generate$', api_views.api_generate),
     url(r'^api/status$', api_views.api_status),
+    url(r'^api/download$', views.download),
     url(r'^api/profiles$', api_views.api_profiles_list_create),
     url(r'^api/profiles/(?P<profile_id>\d+)$', api_views.api_profile_detail_update_delete),
     url(r'^api/profiles/(?P<profile_id>\d+)/build$', api_views.api_profile_build),

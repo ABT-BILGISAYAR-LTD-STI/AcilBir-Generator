@@ -38,7 +38,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEBUG_ENV = os.environ.get("DEBUG", "False")
 DEBUG = DEBUG_ENV.lower() in ['true', '1', 't']
 
-ALLOWED_HOSTS = [GENURL, 'localhost', '127.0.0.1'] if GENURL else ['*']
+ALLOWED_HOSTS = ['*']
 #CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split()
 CSRF_TRUSTED_ORIGINS = [
     f"{PROTOCOL}://{GENURL}" if GENURL else "https://localhost",

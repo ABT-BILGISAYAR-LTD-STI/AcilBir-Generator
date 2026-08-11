@@ -9,6 +9,7 @@ EXEMPT_PATHS = [
     '/save_custom_client',
     '/cleanzip',
     '/download',
+    '/api/download',
     '/updategh',
     '/creategh',
     '/startgh',
