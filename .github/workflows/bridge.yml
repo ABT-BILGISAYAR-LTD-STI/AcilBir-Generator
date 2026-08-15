@@ -15,7 +15,7 @@ env:
   CARGO_EXPAND_VERSION: "1.0.95"
   FLUTTER_VERSION: "3.22.3"
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
-  RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503
+  RUST_VERSION: "1.75" # https://github.com/HalilUral14/rustdesk/discussions/7503
 
 jobs:
   generate_bridge:
@@ -34,7 +34,7 @@ jobs:
         if: ${{ inputs.version != 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
+          repository: HalilUral14/rustdesk
           ref: refs/tags/${{ inputs.version }}
           submodules: recursive
         
@@ -42,7 +42,7 @@ jobs:
         if: ${{ inputs.version == 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
+          repository: HalilUral14/rustdesk
           submodules: recursive
 
       - name: Install prerequisites
