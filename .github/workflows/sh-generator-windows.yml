@@ -128,7 +128,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
+          ref: master
           submodules: recursive
 
       - name: Checkout source code
@@ -488,10 +488,10 @@ jobs:
           shell: pwsh
           command: |
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py -OutFile allowCustom.py
-            python allowCustom.py
+            #python allowCustom.py
             # Remove Setup Server Tip
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff -OutFile removeSetupServerTip.diff
-            git apply removeSetupServerTip.diff  
+            #git apply removeSetupServerTip.diff  
           
       - name: magick stuff
         if: ${{ env.iconlink_url != 'false' }}

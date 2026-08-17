@@ -128,7 +128,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
+          ref: master
           submodules: recursive
 
       - name: Checkout source code
@@ -275,9 +275,9 @@ jobs:
             sed -i -e 's|rs-ny.rustdesk.com|${{ env.server }}|' ./libs/hbb_common/src/config.rs
             sed -i -e 's|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${{ env.key }}|' ./libs/hbb_common/src/config.rs
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
-            python allowCustom.py
+            #python allowCustom.py
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff
-            git apply removeSetupServerTip.diff
+            #git apply removeSetupServerTip.diff
             echo -n "${{ env.custom }}" | cat > ./custom_.txt
             # sed -i '/intl:/a \ \ archive: ^3.6.1' ./flutter/pubspec.yaml
             sed -i -e 's|https://admin.rustdesk.com|${{ env.apiServer }}|' ./src/common.rs
@@ -981,7 +981,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
+          ref: master
           submodules: recursive
 
       - name: Checkout source code
@@ -1122,7 +1122,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
+          ref: master
           submodules: recursive
 
       - name: Checkout source code

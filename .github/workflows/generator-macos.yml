@@ -110,7 +110,7 @@ jobs:
         uses: actions/checkout@v4
         with:
             repository: HalilUral14/rustdesk
-            ref: refs/tags/${{ env.VERSION }}
+            ref: master
             submodules: recursive
   
       - name: Checkout source code
@@ -229,9 +229,9 @@ jobs:
           fi
           
           wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
-          python allowCustom.py
+          #python allowCustom.py
           wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff
-          git apply removeSetupServerTip.diff
+          #git apply removeSetupServerTip.diff
             
           # Update pubspec.yaml with proper YAML formatting
           cp ./flutter/pubspec.yaml ./flutter/pubspec.yaml.bak
