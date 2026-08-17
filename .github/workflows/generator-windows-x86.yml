@@ -124,6 +124,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
+          ref: master
           submodules: recursive
 
       - name: Install ImageMagick on Windows

@@ -136,6 +136,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
+          ref: master
           submodules: recursive
 
       - name: Set Swap Space
@@ -989,6 +990,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
+          ref: master
           submodules: recursive
 
       - name: Download Binary
@@ -1130,6 +1132,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
+          ref: master
           submodules: recursive
 
       - name: Download Binary
