@@ -791,7 +791,7 @@ jobs:
         shell: bash
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
-          mv "./HalilUral14/rustdesk.exe" "./rustdesk/${{ env.appname }}.exe" || echo "rustdesk.exe"
+          mv "./rustdesk/rustdesk.exe" "./rustdesk/${{ env.appname }}.exe" || echo "rustdesk.exe"
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
           pip3 install -r requirements.txt

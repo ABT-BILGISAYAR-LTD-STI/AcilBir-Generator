@@ -441,7 +441,7 @@ jobs:
           continue_on_error: true
           command: |
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.diff -OutFile allowCustom.diff
-            git apply allowCustom.diff
+            #git apply allowCustom.diff
 
       - name: Install LLVM and Clang
         uses: rustdesk-org/install-llvm-action-32bit@master
