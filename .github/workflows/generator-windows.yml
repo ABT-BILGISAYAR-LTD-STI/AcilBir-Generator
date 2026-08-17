@@ -632,8 +632,8 @@ jobs:
           max_attempts: 3
           shell: pwsh
           command: |
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/master/.github/patches/enableCustomClientUpdate.diff -OutFile enableCustomClientUpdate.diff
-            git apply enableCustomClientUpdate.diff
+            #Invoke-WebRequest enableCustomClientUpdate.diff
+            #git apply enableCustomClientUpdate.diff
 
       # - name: run as admin
       #   continue-on-error: true

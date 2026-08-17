@@ -678,8 +678,8 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            curl -fsSL -o enableCustomClientUpdate.diff https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/master/.github/patches/enableCustomClientUpdate.diff
-            git apply enableCustomClientUpdate.diff
+            #curl enableCustomClientUpdate.diff
+            #git apply enableCustomClientUpdate.diff
 
       - name: Restore bridge files
         uses: actions/download-artifact@master

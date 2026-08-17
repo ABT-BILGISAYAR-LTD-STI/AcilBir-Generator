@@ -570,8 +570,8 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/master/.github/patches/enableCustomClientUpdate.diff
-            git apply enableCustomClientUpdate.diff
+            #wget enableCustomClientUpdate.diff
+            #git apply enableCustomClientUpdate.diff
 
       - name: Restore bridge files
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'

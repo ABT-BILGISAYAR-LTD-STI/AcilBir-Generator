@@ -650,8 +650,8 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/master/.github/patches/enableCustomClientUpdate.diff
-            git apply enableCustomClientUpdate.diff
+            #wget enableCustomClientUpdate.diff
+            #git apply enableCustomClientUpdate.diff
 
       - name: replace flutter icons
         if: ${{ env.iconlink_url != 'false' }}
