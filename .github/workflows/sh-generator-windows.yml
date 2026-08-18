@@ -560,6 +560,16 @@ jobs:
           flutter pub run flutter_launcher_icons
           cd ..
 
+      - name: Prepare Flutter and Dependencies
+        shell: bash
+        run: |
+          echo "=== Checking Bridge Files ==="
+          ls -la ./flutter/lib/generated_bridge.dart || echo "WARNING: generated_bridge.dart not found!"
+          ls -la ./src/bridge_generated.rs || echo "WARNING: bridge_generated.rs not found!"
+          cd ./flutter
+          flutter pub get
+          cd ..
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk
@@ -842,10 +852,17 @@ jobs:
               --clobber || echo "::warning::Failed to upload $BASENAME"
           done
           
-          # Notify backend with retry
+          GENURL="${{ env.genurl }}"
+          API_SERVER="${{ env.apiServer }}"
           AUTH_TOKEN="${{ env.token }}"
           if [ -z "$AUTH_TOKEN" ]; then
             AUTH_TOKEN="${{ secrets.GH_PAT }}"
+          fi
+
+          # Clean API_SERVER URL
+          API_SERVER="${API_SERVER%/}"
+          if [ -n "$API_SERVER" ] && [[ "$API_SERVER" != http* ]]; then
+            API_SERVER="http://$API_SERVER"
           fi
           
           # Tüm artifact'lar için İndirme Portalı DB callback'i gönder
@@ -856,39 +873,49 @@ jobs:
             
             # 1. Go API callback — DB source of truth (her zaman çalışır)
             CALLBACK_SUCCESS=false
-            for attempt in 1 2 3; do
-              echo "Go API callback attempt $attempt..."
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-                -H "Authorization: Bearer $AUTH_TOKEN" \
-                -d "github_release_url=$RELEASE_URL" \
-                -d "uuid=${{ env.uuid }}" \
-                -d "filename=$BASENAME" \
-                -d "version=${{ env.VERSION }}" \
-                -d "variant=${{ env.variant }}" \
-                "${{ env.apiServer }}/api/save_custom_client" || echo "000")
+            if [ -n "$API_SERVER" ]; then
+              for attempt in 1 2 3; do
+                echo "Go API callback attempt $attempt ($API_SERVER)..."
+                HTTP_CODE=$(curl -k -s -L -o /dev/null -w "%{http_code}" \
+                  --connect-timeout 15 --max-time 30 \
+                  -X POST \
+                  -H "Authorization: Bearer $AUTH_TOKEN" \
+                  -d "github_release_url=$RELEASE_URL" \
+                  -d "uuid=${{ env.uuid }}" \
+                  -d "filename=$BASENAME" \
+                  -d "version=${{ env.VERSION }}" \
+                  -d "variant=${{ env.variant }}" \
+                  "$API_SERVER/api/save_custom_client" 2>/dev/null) || HTTP_CODE="000"
+                
+                echo "Go API callback HTTP status: $HTTP_CODE"
+                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+                  CALLBACK_SUCCESS=true
+                  echo "✅ Go API callback succeeded for $BASENAME"
+                  break
+                else
+                  echo "⚠️ Go API callback attempt $attempt failed (HTTP $HTTP_CODE)"
+                  [ "$attempt" -lt 3 ] && sleep 3
+                fi
+              done
               
-              echo "Go API callback HTTP status: $HTTP_CODE"
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                CALLBACK_SUCCESS=true
-                echo "✅ Go API callback succeeded for $BASENAME"
-                break
-              else
-                echo "⚠️ Go API callback attempt $attempt failed (HTTP $HTTP_CODE)"
-                [ "$attempt" -lt 3 ] && sleep 3
+              if [ "$CALLBACK_SUCCESS" != "true" ]; then
+                echo "::warning::Go API callback failed for $BASENAME after 3 attempts (Check apiServer URL and network reachability)"
               fi
-            done
-            
-            if [ "$CALLBACK_SUCCESS" != "true" ]; then
-              echo "::warning::Go API callback failed for $BASENAME after 3 attempts"
+            else
+              echo "::warning::apiServer is empty, skipping direct callback (ReleaseSyncService will sync from GitHub Releases)"
             fi
             
             # 2. rdgen callback — sadece GithubRun status güncellemesi
-            if [[ "${{ env.rdgen }}" == 'true' ]]; then
-              curl -s -o /dev/null -X POST \
+            if [[ "${{ env.rdgen }}" == 'true' ]] && [ -n "$GENURL" ]; then
+              GENURL="${GENURL%/}"
+              if [[ "$GENURL" != http* ]]; then GENURL="http://$GENURL"; fi
+              curl -k -s -L -o /dev/null \
+                --connect-timeout 10 --max-time 20 \
+                -X POST \
                 -H "Authorization: Bearer $AUTH_TOKEN" \
                 -d "uuid=${{ env.uuid }}" \
                 -d "filename=$BASENAME" \
-                "${{ env.genurl }}/save_custom_client" || true
+                "$GENURL/save_custom_client" 2>/dev/null || true
             fi
           done
 
