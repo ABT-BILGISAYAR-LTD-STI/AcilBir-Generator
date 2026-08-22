@@ -55,7 +55,20 @@ def generate_custom_client(params, full_url):
     if not urlLink:
         urlLink = "https://rustdesk.com"
     if not downloadLink:
-        downloadLink = "https://acilbir.com/api/client-downloads/download/Windows"
+        platform_name_map = {
+            'windows': 'Windows',
+            'windows-x86': 'Windows-x86',
+            'linux': 'Linux',
+            'android': 'Android',
+            'macos': 'macOS'
+        }
+        p_name = platform_name_map.get(platform, 'Windows')
+        if variant == 'admin':
+            downloadLink = f"https://acilbir.com/api/client-downloads/download/admin-{p_name}"
+        elif variant == 'beta':
+            downloadLink = f"https://acilbir.com/api/client-downloads/download/beta-{p_name}"
+        else:
+            downloadLink = f"https://acilbir.com/api/client-downloads/download/{p_name}"
     direction = params.get('direction', 'both')
     installation = params.get('installation', 'installationY')
     settings = params.get('settings', 'settingsY')

@@ -111,21 +111,44 @@ jobs:
         run: |
           echo "STATUS_URL=${{ env.apiServer }}/api/updategh" >> $env:GITHUB_ENV
 
-      - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
-        uses: actions/checkout@v4
-        with:
-          repository: HalilUral14/rustdesk
-          ref: master
-          submodules: recursive
+      - name: Resolve Git Ref
+        id: resolve_ref
+        shell: bash
+        run: |
+          REQ_VER="${{ env.VERSION }}"
+          if [ -z "$REQ_VER" ] || [ "$REQ_VER" = "master" ] || [ "$REQ_VER" = "nightly" ]; then
+            echo "git_ref=master" >> $GITHUB_OUTPUT
+          else
+            TAG_MATCH=$(git ls-remote --tags --heads https://github.com/HalilUral14/rustdesk.git "$REQ_VER" "v$REQ_VER" "release/$REQ_VER" | head -n 1)
+            if [ -n "$TAG_MATCH" ]; then
+              MATCHING_REF=$(echo "$TAG_MATCH" | awk '{print $2}' | sed 's|refs/tags/||; s|refs/heads/||')
+              echo "git_ref=$MATCHING_REF" >> $GITHUB_OUTPUT
+            else
+              echo "git_ref=master" >> $GITHUB_OUTPUT
+            fi
+          fi
 
       - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
         uses: actions/checkout@v4
         with:
           repository: HalilUral14/rustdesk
-          ref: master
+          ref: ${{ steps.resolve_ref.outputs.git_ref }}
           submodules: recursive
+
+      - name: Set dynamic version in package manifests
+        shell: bash
+        run: |
+          REQ_VER="${{ env.VERSION }}"
+          if [ -n "$REQ_VER" ] && [ "$REQ_VER" != "master" ] && [ "$REQ_VER" != "nightly" ]; then
+            CLEAN_VER=$(echo "$REQ_VER" | sed 's|^v||')
+            echo "Setting build version to $CLEAN_VER"
+            if [ -f "./flutter/pubspec.yaml" ]; then
+              sed -i -E "s|^version: [0-9]+\.[0-9]+\.[0-9]+|version: $CLEAN_VER|" ./flutter/pubspec.yaml || true
+            fi
+            if [ -f "./Cargo.toml" ]; then
+              sed -i -E "0,/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/s//version = \"$CLEAN_VER\"/" ./Cargo.toml || true
+            fi
+          fi
 
       - name: Install ImageMagick on Windows
         run: |

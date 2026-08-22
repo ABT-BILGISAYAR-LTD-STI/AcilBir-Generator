@@ -410,13 +410,40 @@
         </div>
     </form>
     <script>
+        function updateDynamicDownloadLink() {
+            const platform = document.getElementById('id_platform').value || 'windows';
+            const variant = document.getElementById('id_variant').value || 'client';
+            const downloadInput = document.getElementById("{{ form.downloadLink.id_for_label }}");
+            if (!downloadInput) return;
+
+            const platformMap = {
+                'windows': 'Windows',
+                'windows-x86': 'Windows-x86',
+                'linux': 'Linux',
+                'android': 'Android',
+                'macos': 'macOS'
+            };
+            const pName = platformMap[platform] || 'Windows';
+            let prefix = '';
+            if (variant === 'admin') prefix = 'admin-';
+            else if (variant === 'beta') prefix = 'beta-';
+
+            downloadInput.value = `https://acilbir.com/api/client-downloads/download/${prefix}${pName}`;
+        }
+
         document.querySelectorAll('.platform-icon').forEach(icon => {
             icon.addEventListener('click', function() {
                 document.querySelectorAll('.platform-icon').forEach(i => i.classList.remove('active'));
                 this.classList.add('active');
                 document.getElementById('id_platform').value = this.dataset.platform;
+                updateDynamicDownloadLink();
             });
         });
+
+        const variantSelect = document.getElementById("{{ form.variant.id_for_label }}");
+        if (variantSelect) {
+            variantSelect.addEventListener('change', updateDynamicDownloadLink);
+        }
         document.getElementById("{{ form.iconfile.id_for_label }}").addEventListener('change', function(event) {
             previewImage(event.target, 'icon-preview');
         });
