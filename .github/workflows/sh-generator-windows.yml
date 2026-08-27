@@ -160,6 +160,9 @@ jobs:
             if [ -f "./Cargo.toml" ]; then
               sed -i -E "0,/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/s//version = \"$CLEAN_VER\"/" ./Cargo.toml || true
             fi
+            if [ -f "./Cargo.lock" ]; then
+              sed -i -E "0,/name = \"rustdesk\"\nversion = \"[0-9]+\.[0-9]+\.[0-9]+\"/s//name = \"rustdesk\"\nversion = \"$CLEAN_VER\"/" ./Cargo.lock || true
+            fi
           fi
 
       - name: Restore bridge files
