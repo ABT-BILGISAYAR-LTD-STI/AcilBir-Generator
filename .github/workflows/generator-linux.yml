@@ -302,7 +302,9 @@ jobs:
             sed -i -e 's|rs-ny.rustdesk.com|${{ env.server }}|' ./libs/hbb_common/src/config.rs
             sed -i -e 's|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${{ env.key }}|' ./libs/hbb_common/src/config.rs
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
-            #python allowCustom.py
+            python allowCustom.py
+            cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
+            python fixUpdaterDownloadUrl.py
             wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff
             #git apply removeSetupServerTip.diff
             echo -n "${{ env.custom }}" | cat > ./custom_.txt
@@ -310,6 +312,7 @@ jobs:
             sed -i -e 's|https://admin.rustdesk.com|${{ env.apiServer }}|' ./src/common.rs
             sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
             sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+            sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
             # Admin variant: güncelleme endpoint'ini admin kanalına yönlendir
             if [ "${{ env.variant }}" = "admin" ]; then
               sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
@@ -600,8 +603,8 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            #wget enableCustomClientUpdate.diff
-            #git apply enableCustomClientUpdate.diff
+            cp ${{ github.workspace }}/.github/patches/enableCustomClientUpdate.diff enableCustomClientUpdate.diff
+            git apply enableCustomClientUpdate.diff
 
       - name: Restore bridge files
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'

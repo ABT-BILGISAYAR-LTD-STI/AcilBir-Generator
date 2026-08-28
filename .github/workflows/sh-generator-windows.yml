@@ -286,15 +286,18 @@ jobs:
           sed -i -e 's|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${{ env.key }}|' ./libs/hbb_common/src/config.rs
           sed -i -e 's|https://admin.rustdesk.com|${{ env.apiServer }}|' ./src/common.rs
           # ./flutter/pubspec.yaml
-          #sed -i '/intl:/a \ \ archive: ^3.6.1' ./flutter/pubspec.yaml
-          sed -i -e 's|https://github.com/nicholasxuu/nicholasxuu/releases/latest/download|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
           # Admin variant: güncelleme endpoint'ini admin kanalına yönlendir
           if [ "${{ env.variant }}" = "admin" ]; then
             sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./flutter/lib/common.dart 2>/dev/null || true
           fi
           # Beta variant: güncelleme endpoint'ini beta kanalına yönlendir
           if [ "${{ env.variant }}" = "beta" ]; then
             sed -i 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./flutter/lib/common.dart 2>/dev/null || true
           fi
 
       - name: add key recovery module
@@ -515,7 +518,9 @@ jobs:
           shell: pwsh
           command: |
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py -OutFile allowCustom.py
-            #python allowCustom.py
+            python allowCustom.py
+            cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
+            python fixUpdaterDownloadUrl.py
             # Remove Setup Server Tip
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff -OutFile removeSetupServerTip.diff
             #git apply removeSetupServerTip.diff  
@@ -574,7 +579,16 @@ jobs:
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff -OutFile xoffline.diff
             git apply xoffline.diff
 
-      # removeNewVersionNotif adımı kaldırıldı — güncelleme bildirimi her zaman aktif
+      - name: enable update notifications for custom clients
+        continue-on-error: true
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 1
+          max_attempts: 3
+          shell: pwsh
+          command: |
+            cp ${{ github.workspace }}/.github/patches/enableCustomClientUpdate.diff enableCustomClientUpdate.diff
+            git apply enableCustomClientUpdate.diff
 
       - name: replace flutter icons
         if: ${{ env.iconlink_url != 'false' }}

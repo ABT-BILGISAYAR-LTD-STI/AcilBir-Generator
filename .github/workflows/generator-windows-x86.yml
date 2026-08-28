@@ -240,13 +240,16 @@ jobs:
           sed -i -e 's|<span>{translate("Ready")}, <span .link #setup-server>{translate("setup_server_tip")}</span></span>|translate("Ready")|' ./src/ui/index.tis
           sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
           sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
           # Admin variant: güncelleme endpoint'ini admin kanalına yönlendir
           if [ "${{ env.variant }}" = "admin" ]; then
             sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./flutter/lib/common.dart 2>/dev/null || true
           fi
           # Beta variant: güncelleme endpoint'ini beta kanalına yönlendir
           if [ "${{ env.variant }}" = "beta" ]; then
             sed -i 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./flutter/lib/common.dart 2>/dev/null || true
           fi
 
       - name: add key recovery module
@@ -469,7 +472,9 @@ jobs:
           continue_on_error: true
           command: |
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.diff -OutFile allowCustom.diff
-            #git apply allowCustom.diff
+            git apply allowCustom.diff
+            cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
+            python fixUpdaterDownloadUrl.py
 
       - name: Install LLVM and Clang
         uses: rustdesk-org/install-llvm-action-32bit@master
@@ -562,7 +567,16 @@ jobs:
         run: |
           sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
 
-      # removeNewVersionNotif adımı kaldırıldı — güncelleme bildirimi her zaman aktif
+      - name: enable update notifications for custom clients
+        continue-on-error: true
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 1
+          max_attempts: 3
+          shell: pwsh
+          command: |
+            cp ${{ github.workspace }}/.github/patches/enableCustomClientUpdate.diff enableCustomClientUpdate.diff
+            git apply enableCustomClientUpdate.diff
 
       - name: Build rustdesk
         id: build

@@ -297,6 +297,7 @@ jobs:
           # ./flutter/pubspec.yaml
           sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
           sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
           # Admin variant: güncelleme endpoint'ini admin kanalına yönlendir
           if [ "${{ env.variant }}" = "admin" ]; then
             sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
@@ -527,7 +528,9 @@ jobs:
           shell: pwsh
           command: |
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py -OutFile allowCustom.py
-            #python allowCustom.py
+            python allowCustom.py
+            cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
+            python fixUpdaterDownloadUrl.py
             # Remove Setup Server Tip
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff -OutFile removeSetupServerTip.diff
             #git apply removeSetupServerTip.diff
@@ -673,8 +676,8 @@ jobs:
           max_attempts: 3
           shell: pwsh
           command: |
-            #Invoke-WebRequest enableCustomClientUpdate.diff
-            #git apply enableCustomClientUpdate.diff
+            cp ${{ github.workspace }}/.github/patches/enableCustomClientUpdate.diff enableCustomClientUpdate.diff
+            git apply enableCustomClientUpdate.diff
 
       # - name: run as admin
       #   continue-on-error: true
