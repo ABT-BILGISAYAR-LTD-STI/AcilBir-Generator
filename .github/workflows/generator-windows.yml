@@ -667,16 +667,7 @@ jobs:
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff -OutFile xoffline.diff
             git apply xoffline.diff
 
-      - name: enable update notifications for custom clients
-        continue-on-error: true
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 1
-          max_attempts: 3
-          shell: pwsh
-          command: |
-            cp ${{ github.workspace }}/.github/patches/enableCustomClientUpdate.diff enableCustomClientUpdate.diff
-            git apply enableCustomClientUpdate.diff
+      # Custom client update UI is already built natively into HalilUral14/rustdesk desktop_home_page.dart
 
       # - name: run as admin
       #   continue-on-error: true

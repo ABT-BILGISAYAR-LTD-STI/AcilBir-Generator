@@ -679,8 +679,6 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            cp ${{ github.workspace }}/.github/patches/enableCustomClientUpdate.diff enableCustomClientUpdate.diff
-            git apply enableCustomClientUpdate.diff
             cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
             python fixUpdaterDownloadUrl.py
 
