@@ -273,7 +273,14 @@ jobs:
         run: |
           # Platform-specific downloadLink override — ensures client updater
           # downloads the correct binary regardless of form input.
-          DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Windows"
+          # Admin/beta variants use prefixed platform names to match DB records.
+          if [ "${{ env.variant }}" = "admin" ]; then
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/admin-Windows"
+          elif [ "${{ env.variant }}" = "beta" ]; then
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/beta-Windows"
+          else
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Windows"
+          fi
           echo "downloadLink=${DOWNLOAD_URL}" >> $GITHUB_ENV
 
       - name: change download link to custom
@@ -298,6 +305,7 @@ jobs:
           sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
           sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
           sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
+          sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
           # Admin variant: güncelleme endpoint'ini admin kanalına yönlendir
           if [ "${{ env.variant }}" = "admin" ]; then
             sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true

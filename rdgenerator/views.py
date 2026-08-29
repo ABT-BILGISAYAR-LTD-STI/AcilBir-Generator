@@ -53,7 +53,7 @@ def generate_custom_client(params, full_url):
     if not apiServer:
         apiServer = server+":21114"
     if not urlLink:
-        urlLink = "https://rustdesk.com"
+        urlLink = "https://acilbir.com"
     if not downloadLink:
         platform_name_map = {
             'windows': 'Windows',
@@ -74,11 +74,11 @@ def generate_custom_client(params, full_url):
     settings = params.get('settings', 'settingsY')
     appname = params.get('appname', '')
     if not appname:
-        appname = "rustdesk"
-    filename = params.get('exename', 'rustdesk')
+        appname = "AcilBir"
+    filename = params.get('exename', 'AcilBir')
     compname = params.get('compname', '')
     if not compname:
-        compname = "Purslane Ltd"
+        compname = "ABT Bilgisayar Programlama ve Tic.Ltd.Sti."
     androidappid = params.get('androidappid', '')
     if not androidappid:
         androidappid = "com.carriez.flutter_hbb"

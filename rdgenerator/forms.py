@@ -19,8 +19,8 @@ class GenerateForm(forms.Form):
     delayFix = forms.BooleanField(initial=True, required=False)
 
     #General
-    exename = forms.CharField(label="Name for EXE file", required=True)
-    appname = forms.CharField(label="Custom App Name", required=False)
+    exename = forms.CharField(label="Name for EXE file", required=True, initial="AcilBir")
+    appname = forms.CharField(label="Custom App Name", required=False, initial="AcilBir")
     direction = forms.ChoiceField(widget=forms.RadioSelect, choices=[
         ('incoming', 'Incoming Only'),
         ('outgoing', 'Outgoing Only'),
@@ -40,9 +40,9 @@ class GenerateForm(forms.Form):
     serverIP = forms.CharField(label="Host", required=False)
     apiServer = forms.CharField(label="API Server", required=False)
     key = forms.CharField(label="Key", required=False)
-    urlLink = forms.CharField(label="Custom URL for links", required=False)
+    urlLink = forms.CharField(label="Custom URL for links", required=False, initial="https://acilbir.com")
     downloadLink = forms.CharField(label="Custom URL for downloading new versions", required=False, initial="https://acilbir.com/api/client-downloads/download/Windows")
-    compname = forms.CharField(label="Company name",required=False)
+    compname = forms.CharField(label="Company name", required=False, initial="ABT Bilgisayar Programlama ve Tic.Ltd.Sti.")
 
     #Visual
     iconfile = forms.FileField(label="Custom App Icon (in .png format)", required=False, widget=forms.FileInput(attrs={'accept': 'image/png'}))

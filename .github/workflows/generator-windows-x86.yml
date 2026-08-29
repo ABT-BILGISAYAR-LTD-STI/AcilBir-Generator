@@ -222,6 +222,21 @@ jobs:
           sed -i -e "s|<div .link .custom-event url='https://rustdesk.com/privacy.html'>|<div .link .custom-event url='${{ env.urlLink }}/privacy.html'>|" ./src/ui/index.tis
           sed -i -e "s|https://rustdesk.com/|${{env.urlLink }}|" ./res/setup.nsi
 
+      - name: override download link for Windows x86 platform
+        shell: bash
+        run: |
+          # Platform-specific downloadLink override — ensures client updater
+          # downloads the correct binary regardless of form input.
+          # Admin/beta variants use prefixed platform names to match DB records.
+          if [ "${{ env.variant }}" = "admin" ]; then
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/admin-Windows"
+          elif [ "${{ env.variant }}" = "beta" ]; then
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/beta-Windows"
+          else
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Windows"
+          fi
+          echo "downloadLink=${DOWNLOAD_URL}" >> $GITHUB_ENV
+
       - name: change download link to custom
         if: env.downloadLink != 'https://rustdesk.com/download'
         continue-on-error: true
@@ -241,6 +256,7 @@ jobs:
           sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
           sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
           sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
+          sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
           # Admin variant: güncelleme endpoint'ini admin kanalına yönlendir
           if [ "${{ env.variant }}" = "admin" ]; then
             sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
