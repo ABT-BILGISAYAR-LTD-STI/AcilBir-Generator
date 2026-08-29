@@ -265,11 +265,16 @@
                     <option value="android">Android</option>
                     <option value="macos">macOS</option>
                 </select>
-                <label for="{{ form.version.id_for_label }}">Rustdesk Version:</label>
+                <label for="{{ form.version.id_for_label }}">Rustdesk Version (Serbestçe Yazabilir veya Seçebilirsiniz):</label>
                 {{ form.version }}
-                {% if form.version.help_text %}
-                    <span class="help-text">{{ form.version.help_text }}</span>
-                {% endif %}
+                <datalist id="version-datalist">
+                    <option value="1.4.9">
+                    <option value="1.4.9.1">
+                    <option value="1.4.10">
+                    <option value="1.5.0">
+                    <option value="2.0.0">
+                    <option value="master">
+                </datalist>
                 <div class="help-text">{{ form.version.help_text }}</div>
                 <label for="{{ form.variant.id_for_label }}"><i class="fas fa-user-shield"></i> Client Türü:</label>
                 {{ form.variant }}
