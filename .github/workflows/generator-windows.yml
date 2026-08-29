@@ -527,8 +527,7 @@ jobs:
           retry_wait_seconds: 15
           shell: pwsh
           command: |
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py -OutFile allowCustom.py
-            python allowCustom.py
+            # allowCustom.py not needed: HalilUral14/rustdesk already has native unsigned custom client support in common.rs
             cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
             python fixUpdaterDownloadUrl.py
             # Remove Setup Server Tip

@@ -259,8 +259,7 @@ jobs:
             sed -i '' 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./flutter/lib/common.dart 2>/dev/null || true
           fi
           
-          wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
-          python allowCustom.py
+          # allowCustom.py not needed: HalilUral14/rustdesk already has native unsigned custom client support in common.rs
           cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
           python fixUpdaterDownloadUrl.py
           wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff

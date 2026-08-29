@@ -471,8 +471,7 @@ jobs:
           shell: pwsh
           continue_on_error: true
           command: |
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.diff -OutFile allowCustom.diff
-            git apply allowCustom.diff
+            # allowCustom not needed: HalilUral14/rustdesk already has native unsigned custom client support in common.rs
             cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
             python fixUpdaterDownloadUrl.py
 
