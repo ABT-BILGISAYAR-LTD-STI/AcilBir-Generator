@@ -5,6 +5,7 @@ import os
 from .auth import extract_token, verify_token
 
 EXEMPT_PATHS = [
+    '/health',
     '/get_png',
     '/save_custom_client',
     '/cleanzip',

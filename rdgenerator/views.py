@@ -743,3 +743,6 @@ def get_zip(request):
         })
 
     return response
+
+def health_check(request):
+    return JsonResponse({"status": "ok", "service": "acilbir-generator"})

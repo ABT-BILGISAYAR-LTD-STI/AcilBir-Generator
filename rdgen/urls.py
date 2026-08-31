@@ -24,6 +24,7 @@ else:
     from django.conf.urls import  url, include
 
 urlpatterns = [
+    url(r'^health$', views.health_check),
     url(r'^$',views.generator_view),
     url(r'^generator',views.generator_view),
     url(r'^check_for_file',views.check_for_file),
