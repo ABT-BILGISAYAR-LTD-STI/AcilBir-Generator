@@ -5,15 +5,15 @@ class GenerateForm(forms.Form):
     sh_secret_field = forms.CharField(required=False)
     platform = forms.ChoiceField(choices=[('windows','Windows 64Bit'),('windows-x86','Windows 32Bit'),('linux','Linux'),('android','Android'),('macos','macOS')], initial='windows')
     version = forms.CharField(
-        label="RustDesk Version",
-        initial='1.4.9',
+        label="AcilBir Client Version",
+        initial='1.4.10',
         required=True,
         widget=forms.TextInput(attrs={
-            'placeholder': 'Örn: 1.4.9, 1.4.10, 1.5.0, 2.0.0 veya master',
+            'placeholder': 'Örn: 1.4.10, 1.5.0, 2.0.0 veya master',
             'list': 'version-datalist',
             'autocomplete': 'off'
         }),
-        help_text="İstediğiniz sürüm numarasını serbestçe yazabilirsiniz (Örn: 1.4.9, 1.4.10, 1.5.0, 2.0.0 veya master)."
+        help_text="İstediğiniz sürüm numarasını serbestçe yazabilirsiniz (Örn: 1.4.10, 1.5.0, 2.0.0 veya master)."
     )
     variant = forms.ChoiceField(choices=[('client','Müşteri Client'),('admin','Admin Client'),('beta','Beta/Test Client')], initial='client', required=False)
     delayFix = forms.BooleanField(initial=True, required=False)
