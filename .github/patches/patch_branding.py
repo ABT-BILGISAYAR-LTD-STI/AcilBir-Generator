@@ -35,7 +35,7 @@ def replace_exact(path, old_str, new_str):
             new_content = content.replace(old_str, new_str)
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(new_content)
-            print(f"[patch_branding] Replaced '{old_str}' -> '{new_str}' in {path}")
+            print(f"[patch_branding] Replaced in {path}")
             return True
     except Exception as e:
         print(f"[patch_branding] Warning: Could not replace in {path}: {e}")
@@ -112,7 +112,8 @@ def main():
     replace_in_file("libs/portable/Cargo.toml", r'OriginalFilename\s*=\s*"rustdesk.exe"', f'OriginalFilename = "{appname}.exe"')
     replace_in_file("libs/portable/Cargo.toml", r'description\s*=\s*"RustDesk Remote Desktop"', f'description = "{appname} Remote Desktop"')
 
-    replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
+    replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*
+version\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
     
     # Flutter pubspec.yaml version
     if '+' in clean_ver:
@@ -162,14 +163,13 @@ def main():
     if os.path.exists(rc_file):
         replace_in_file(rc_file, r'PRODUCT_VERSION\s+[0-9,]+', f'PRODUCT_VERSION {win_ver_comma}')
         replace_in_file(rc_file, r'FILE_VERSION\s+[0-9,]+', f'FILE_VERSION {win_ver_comma}')
-        replace_in_file(rc_file, r'VALUE\s+"ProductVersion",\s+"[^"]+"', f'VALUE "ProductVersion", "{clean_ver}\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"FileVersion",\s+"[^"]+"', f'VALUE "FileVersion", "{clean_ver}\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"ProductName",\s+"[^"]+"', f'VALUE "ProductName", "{appname}\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"FileDescription",\s+"[^"]+"', f'VALUE "FileDescription", "{appname} Remote Desktop\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"InternalName",\s+"[^"]+"', f'VALUE "InternalName", "{appname}\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"OriginalFilename",\s+"[^"]+"', f'VALUE "OriginalFilename", "{appname}.exe\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"CompanyName",\s+"[^"]+"', f'VALUE "CompanyName", "{compname}\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"LegalCopyright",\s+"[^"]+"', f'VALUE "LegalCopyright", "Copyright (C) 2026 {compname}. All rights reserved.\\0"')
+        # Use exact safe replacements for Runner.rc without regex backreference traps
+        replace_exact(rc_file, '"Purslane Tech Pte. Ltd."', f'"{compname}"')
+        replace_exact(rc_file, '"Purslane Ltd."', f'"{compname}"')
+        replace_exact(rc_file, '"RustDesk Remote Desktop"', f'"{appname} Remote Desktop"')
+        replace_exact(rc_file, '"RustDesk"', f'"{appname}"')
+        replace_exact(rc_file, '"rustdesk.exe"', f'"{appname}.exe"')
+        replace_exact(rc_file, '"rustdesk"', f'"{clean_id}"')
 
     replace_exact("src/platform/windows.rs", 'const SERVICE_NAME: &str = "RustDesk";', f'const SERVICE_NAME: &str = "{appname}";')
     replace_exact("src/platform/windows.rs", 'const SERVICE_NAME: &str = "rustdesk";', f'const SERVICE_NAME: &str = "{clean_id}";')

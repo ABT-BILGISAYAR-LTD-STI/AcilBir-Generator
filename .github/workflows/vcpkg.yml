@@ -9,6 +9,7 @@ on:
         default: 'Manual dependency update'
 
 env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
   VCPKG_COMMIT_ID: '120deac3062162151622ca4860575a33844ba10b'
 
 jobs:
