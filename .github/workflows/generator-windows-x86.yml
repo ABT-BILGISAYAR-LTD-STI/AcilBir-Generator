@@ -736,9 +736,6 @@ jobs:
 
           # Clean API_SERVER URL
           API_SERVER="${API_SERVER%/}"
-          if [ -n "$API_SERVER" ] && [[ "$API_SERVER" != http* ]]; then
-            API_SERVER="http://$API_SERVER"
-          fi
           
           # Tüm artifact'lar için İndirme Portalı DB callback'i gönder
           for ARTIFACT_PATH in $ARTIFACTS; do
@@ -746,51 +743,82 @@ jobs:
             RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$BASENAME"
             echo "Callback for $BASENAME: $RELEASE_URL"
             
-            # 1. Go API callback — DB source of truth (her zaman çalışır)
+            # 1. Go API callback — DB source of truth (HTTPS ve HTTP fallback ile)
             CALLBACK_SUCCESS=false
             if [ -n "$API_SERVER" ]; then
-              for attempt in 1 2 3; do
-                echo "Go API callback attempt $attempt ($API_SERVER)..."
-                HTTP_CODE=$(curl -k -s -L -o /dev/null -w "%{http_code}" \
-                  --connect-timeout 15 --max-time 30 \
-                  -X POST \
-                  -H "Authorization: Bearer $AUTH_TOKEN" \
-                  -d "github_release_url=$RELEASE_URL" \
-                  -d "uuid=${{ env.uuid }}" \
-                  -d "filename=$BASENAME" \
-                  -d "version=${{ env.VERSION }}" \
-                  -d "variant=${{ env.variant }}" \
-                  "$API_SERVER/api/save_custom_client" 2>/dev/null) || HTTP_CODE="000"
-                
-                echo "Go API callback HTTP status: $HTTP_CODE"
-                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                  CALLBACK_SUCCESS=true
-                  echo "✅ Go API callback succeeded for $BASENAME"
-                  break
-                else
-                  echo "⚠️ Go API callback attempt $attempt failed (HTTP $HTTP_CODE)"
-                  [ "$attempt" -lt 3 ] && sleep 3
-                fi
+              # Form URL candidates (prefer https, fallback to http)
+              URL_CANDIDATES=()
+              if [[ "$API_SERVER" == https://* ]]; then
+                URL_CANDIDATES+=("$API_SERVER/api/save_custom_client")
+                URL_CANDIDATES+=("http://${API_SERVER#https://}/api/save_custom_client")
+              elif [[ "$API_SERVER" == http://* ]]; then
+                URL_CANDIDATES+=("https://${API_SERVER#http://}/api/save_custom_client")
+                URL_CANDIDATES+=("$API_SERVER/api/save_custom_client")
+              else
+                URL_CANDIDATES+=("https://$API_SERVER/api/save_custom_client")
+                URL_CANDIDATES+=("http://$API_SERVER/api/save_custom_client")
+              fi
+
+              for TARGET_URL in "${URL_CANDIDATES[@]}"; do
+                echo "Trying Go API callback at $TARGET_URL..."
+                for attempt in 1 2; do
+                  HTTP_CODE=$(curl -k -s -L --post301 --post302 --post303 -o /dev/null -w "%{http_code}" \
+                    --connect-timeout 10 --max-time 20 \
+                    -X POST \
+                    -H "Authorization: Bearer $AUTH_TOKEN" \
+                    -H "Content-Type: application/x-www-form-urlencoded" \
+                    -d "github_release_url=$RELEASE_URL" \
+                    -d "uuid=${{ env.uuid }}" \
+                    -d "filename=$BASENAME" \
+                    -d "version=${{ env.VERSION }}" \
+                    -d "variant=${{ env.variant }}" \
+                    "$TARGET_URL" 2>/dev/null) || HTTP_CODE="000"
+                  
+                  echo "Go API callback HTTP status: $HTTP_CODE (attempt $attempt)"
+                  if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+                    CALLBACK_SUCCESS=true
+                    echo "✅ Go API callback succeeded for $BASENAME ($TARGET_URL)"
+                    break 2
+                  fi
+                  sleep 2
+                done
               done
               
               if [ "$CALLBACK_SUCCESS" != "true" ]; then
-                echo "::warning::Go API callback failed for $BASENAME after 3 attempts (Check apiServer URL and network reachability)"
+                echo "::warning::Go API callback finished (ReleaseSyncService will also sync from GitHub Releases)"
               fi
-            else
-              echo "::warning::apiServer is empty, skipping direct callback (ReleaseSyncService will sync from GitHub Releases)"
             fi
             
-            # 2. rdgen callback — sadece GithubRun status güncellemesi
+            # 2. Generator callback — GithubRun status güncellemesi
             if [ -n "$GENURL" ] && [ -n "${{ env.uuid }}" ]; then
-              GENURL="${GENURL%/}"
-              if [[ "$GENURL" != http* ]]; then GENURL="http://$GENURL"; fi
-              curl -k -s -L -o /dev/null \
-                --connect-timeout 10 --max-time 20 \
-                -X POST \
-                -H "Authorization: Bearer $AUTH_TOKEN" \
-                -d "uuid=${{ env.uuid }}" \
-                -d "filename=$BASENAME" \
-                "$GENURL/save_custom_client" 2>/dev/null || true
+              GEN_CANDIDATES=()
+              GENURL_CLEAN="${GENURL%/}"
+              if [[ "$GENURL_CLEAN" == https://* ]]; then
+                GEN_CANDIDATES+=("$GENURL_CLEAN/save_custom_client")
+                GEN_CANDIDATES+=("http://${GENURL_CLEAN#https://}/save_custom_client")
+              elif [[ "$GENURL_CLEAN" == http://* ]]; then
+                GEN_CANDIDATES+=("https://${GENURL_CLEAN#http://}/save_custom_client")
+                GEN_CANDIDATES+=("$GENURL_CLEAN/save_custom_client")
+              else
+                GEN_CANDIDATES+=("https://$GENURL_CLEAN/save_custom_client")
+                GEN_CANDIDATES+=("http://$GENURL_CLEAN/save_custom_client")
+              fi
+
+              for GTARGET in "${GEN_CANDIDATES[@]}"; do
+                echo "Triggering Generator status callback at $GTARGET..."
+                GCODE=$(curl -k -s -L --post301 --post302 --post303 -o /dev/null -w "%{http_code}" \
+                  --connect-timeout 8 --max-time 15 \
+                  -X POST \
+                  -H "Authorization: Bearer $AUTH_TOKEN" \
+                  -H "Content-Type: application/x-www-form-urlencoded" \
+                  -d "uuid=${{ env.uuid }}" \
+                  -d "filename=$BASENAME" \
+                  "$GTARGET" 2>/dev/null) || GCODE="000"
+                if [ "$GCODE" -ge 200 ] && [ "$GCODE" -lt 300 ]; then
+                  echo "✅ Generator callback succeeded ($GTARGET)"
+                  break
+                fi
+              done
             fi
           done
 
