@@ -651,7 +651,6 @@ jobs:
       - name: icon stuff
         continue-on-error: true
         if: ${{ env.iconlink_url != 'false' }}
-        continue-on-error: true
         run: |
           mv ./rustdesk/data/flutter_assets/assets/icon.svg ./rustdesk/data/flutter_assets/assets/icon.svg.bak
           magick ./res/icon.png ./rustdesk/data/flutter_assets/assets/icon.svg
