@@ -15,7 +15,7 @@ env:
   CARGO_EXPAND_VERSION: "1.0.95"
   FLUTTER_VERSION: "3.22.3"
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
-  RUST_VERSION: "1.75" # https://github.com/HalilUral14/rustdesk/discussions/7503
+  RUST_VERSION: "1.75" # https://github.com/HalilUral14/AcilBir/discussions/7503
 
 jobs:
   generate_bridge:
@@ -38,7 +38,7 @@ jobs:
           if [ -z "$REQ_VER" ] || [ "$REQ_VER" = "master" ] || [ "$REQ_VER" = "nightly" ]; then
             echo "git_ref=master" >> $GITHUB_OUTPUT
           else
-            TAG_MATCH=$(git ls-remote --tags --heads https://github.com/HalilUral14/rustdesk.git "$REQ_VER" "v$REQ_VER" "release/$REQ_VER" | head -n 1)
+            TAG_MATCH=$(git ls-remote --tags --heads https://github.com/HalilUral14/AcilBir.git "$REQ_VER" "v$REQ_VER" "release/$REQ_VER" | head -n 1)
             if [ -n "$TAG_MATCH" ]; then
               MATCHING_REF=$(echo "$TAG_MATCH" | awk '{print $2}' | sed 's|refs/tags/||; s|refs/heads/||')
               echo "git_ref=$MATCHING_REF" >> $GITHUB_OUTPUT
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
-          repository: HalilUral14/rustdesk
+          repository: HalilUral14/AcilBir
           ref: ${{ steps.resolve_ref.outputs.git_ref }}
           submodules: recursive
 
