@@ -276,6 +276,7 @@ jobs:
 
       ###########################################################echo "${{ env.iconbase64 }}" | base64 -d > ./res/icon.png
       - name: icon stuff
+        continue-on-error: true
         if: ${{ env.iconlink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:

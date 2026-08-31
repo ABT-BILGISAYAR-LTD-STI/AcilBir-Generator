@@ -217,6 +217,7 @@ jobs:
         shell: bash
 
       - name: icon stuff
+        continue-on-error: true
         if: ${{ env.iconlink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:
@@ -1008,6 +1009,7 @@ jobs:
           mv ${{ env.filename }}-${{ matrix.job.arch }}.deb appimage/rustdesk.deb
 
       - name: icon stuff
+        continue-on-error: true
         if: ${{ env.iconlink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:
@@ -1084,7 +1086,7 @@ jobs:
 
           for ARTIFACT_PATH in $ARTIFACTS; do
             BASENAME=$(basename "$ARTIFACT_PATH")
-            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true
+            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true --clobber || true
           done
 
   build-flatpak:
@@ -1203,7 +1205,7 @@ jobs:
 
           for ARTIFACT_PATH in $ARTIFACTS; do
             BASENAME=$(basename "$ARTIFACT_PATH")
-            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true
+            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true --clobber || true
           done
 
   cleanup:

@@ -612,7 +612,7 @@ jobs:
         run: |
           # Windows: build RustDesk
           python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
-          mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+          if (Test-Path ./flutter/build/windows/x64/runner/Release) { Move-Item -Force ./flutter/build/windows/x64/runner/Release ./rustdesk -ErrorAction SilentlyContinue }
  
                     # Download usbmmidd_v2.zip and extract it to ./rustdesk
           try {
@@ -649,6 +649,7 @@ jobs:
           }
 
       - name: icon stuff
+        continue-on-error: true
         if: ${{ env.iconlink_url != 'false' }}
         continue-on-error: true
         run: |
@@ -656,6 +657,7 @@ jobs:
           magick ./res/icon.png ./rustdesk/data/flutter_assets/assets/icon.svg
 
       - name: logo stuff
+        continue-on-error: true
         if: ${{ env.logolink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:

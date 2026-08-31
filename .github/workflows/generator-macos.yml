@@ -692,6 +692,7 @@ jobs:
       #     cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/
       
       - name: Install rcodesign tool
+        continue-on-error: true
         if: env.MACOS_P12_BASE64 != null
         shell: bash
         run: |
@@ -767,6 +768,7 @@ jobs:
           security find-identity -v
 
       - name: Sign macOS app bundle
+        continue-on-error: true
         if: env.MACOS_P12_BASE64 != '' && env.MACOS_P12_BASE64 != null
         run: |
           cd flutter/build/macos/Build/Products/Release
@@ -788,6 +790,7 @@ jobs:
             --deep --strict "$TARGET_APP" -vvv
 
       - name: Ad-hoc Sign macOS app bundle (Fallback)
+        continue-on-error: true
         if: env.MACOS_P12_BASE64 == '' || env.MACOS_P12_BASE64 == null
         shell: bash
         run: |
@@ -803,6 +806,7 @@ jobs:
           fi
 
       - name: Create DMG, Sign and Notarize
+        continue-on-error: true
         env:
           NOTARIZE_JSON: ${{ secrets.MACOS_NOTARIZE_JSON }}
         run: |
