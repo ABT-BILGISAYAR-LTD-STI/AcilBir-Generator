@@ -35,7 +35,7 @@ def generate_custom_client(params, full_url):
     user_secret = params.get('sh_secret_field', '')
     selfhosted = (_settings.SH_SECRET == user_secret)
     platform = params.get('platform', 'windows')
-    version = params.get('version', '1.4.9')
+    version = params.get('version', '1.4.10-1')
     variant = params.get('variant', 'client')
     delayFix = params.get('delayFix', True)
     xOffline = params.get('xOffline', False)
@@ -81,7 +81,7 @@ def generate_custom_client(params, full_url):
         compname = "ABT Bilgisayar Programlama ve Tic.Ltd.Sti."
     androidappid = params.get('androidappid', '')
     if not androidappid:
-        androidappid = "com.carriez.flutter_hbb"
+        androidappid = "com.acilbir.app"
     compname = compname.replace("&","\\&")
     permPass = params.get('permanentPassword', '')
     theme = params.get('theme', 'system')
@@ -112,9 +112,9 @@ def generate_custom_client(params, full_url):
         filename = re.sub(r'[^\w\s-]', '_', filename).strip()
         filename = filename.replace(" ","_")
     else:
-        filename = "rustdesk"
+        filename = "AcilBir"
     if not all(char.isascii() for char in appname):
-        appname = "rustdesk"
+        appname = "AcilBir"
     myuuid = str(uuid.uuid4())
 
     try:
