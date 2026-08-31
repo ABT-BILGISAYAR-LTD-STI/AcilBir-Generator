@@ -27,7 +27,7 @@ GENURL = os.environ.get("GENURL", '')
 GHBRANCH = os.environ.get("GHBRANCH",'main')
 ZIP_PASSWORD = os.environ.get("ZIP_PASSWORD",'insecure')
 PROTOCOL = os.environ.get("PROTOCOL", 'https')
-REPONAME = os.environ.get("REPONAME", 'rdgen')
+REPONAME = os.environ.get("REPONAME", 'AcilBir-Generator')
 SH_SECRET = os.environ.get('SH_SECRET', 'secret')
 
 MEDIA_URL = '/media/'

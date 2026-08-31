@@ -31,12 +31,12 @@ jobs:
 
       - name: Sync files
         run: |
-          # AcilBir.com'daki rdgen klasörünü temizle (.git hariç, zaten yok)
-          rm -rf acilbir/rustdesk-pro/rdgen
-          mkdir -p acilbir/rustdesk-pro/rdgen
+          # AcilBir.com'daki generator klasörünü temizle (.git hariç, zaten yok)
+          rm -rf acilbir/acilbir-pro/acilbir-generator
+          mkdir -p acilbir/acilbir-pro/acilbir-generator
 
-          # rdgen reposunun içeriğini kopyala (.git hariç)
-          rsync -a --exclude='.git' rdgen/ acilbir/rustdesk-pro/rdgen/
+          # generator reposunun içeriğini kopyala (.git hariç)
+          rsync -a --exclude='.git' rdgen/ acilbir/acilbir-pro/acilbir-generator/
 
       - name: Commit and push
         working-directory: acilbir

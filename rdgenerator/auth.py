@@ -59,6 +59,7 @@ def verify_token(token):
 
     candidate_keys = [
         os.environ.get('JWT_SECRET'),
+        os.environ.get('ACILBIR_API_JWT_KEY'),
         os.environ.get('RUSTDESK_API_JWT_KEY'),
         getattr(_settings, 'SECRET_KEY', None)
     ]
