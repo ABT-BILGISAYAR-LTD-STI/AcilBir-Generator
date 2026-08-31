@@ -823,117 +823,95 @@ jobs:
             -O "$ASSETS_DIR/logo.png" \
             "${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}"
 
-      - name: Sign macOS app bundle
-        if: env.MACOS_P12_BASE64 != ''
+      - name: Import Apple Certificate
+        if: env.MACOS_P12_BASE64 != '' && env.MACOS_P12_BASE64 != null
         run: |
-            cd flutter/build/macos/Build/Products/Release
-            # Debug info
-            echo "Current directory contents:"
-            ls -la
-            
-            # Rename RustDesk.app to the custom app name first
-            if [ -d "RustDesk.app" ]; then
-              # First rename the app if it's still called RustDesk.app
-              mv "RustDesk.app" "${{ env.appname }}.app"
-              echo "Renamed RustDesk.app to ${{ env.appname }}.app"
-            fi
-            
-            echo "App bundle contents after rename:"
-            ls -la "${{ env.appname }}.app" || echo "App not found"
-            ls -la "${{ env.appname }}.app/Contents" || echo "Contents not found"
-            
-            # Decode the certificate
-            echo "${{ secrets.MACOS_P12_BASE64 }}" | base64 --decode > certificate.p12
-            
-            # Sign the app bundle and its contents
-            if [ -d "${{ env.appname }}.app/Contents/MacOS" ]; then
-              echo "Signing main executable..."
-              MAIN_EXECUTABLE="${{ env.appname }}.app/Contents/MacOS/${{ env.appname }}"
-              if [ -f "$MAIN_EXECUTABLE" ]; then
-                rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                  --code-signature-flags runtime "$MAIN_EXECUTABLE"
-              else
-                echo "Main executable not found at expected path: $MAIN_EXECUTABLE"
-                # Try to find the actual executable
-                echo "Available executables in MacOS directory:"
-                ls -la "${{ env.appname }}.app/Contents/MacOS/"
-                ACTUAL_EXECUTABLE=$(ls "${{ env.appname }}.app/Contents/MacOS/" | head -n 1)
-                if [ -n "$ACTUAL_EXECUTABLE" ]; then
-                  echo "Found executable: $ACTUAL_EXECUTABLE"
-                  rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                    --code-signature-flags runtime "${{ env.appname }}.app/Contents/MacOS/$ACTUAL_EXECUTABLE"
-                fi
-              fi
-              
-              echo "Signing frameworks..."
-              find "${{ env.appname }}.app/Contents/Frameworks" -type f -not -name ".*" -exec \
-                rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                --code-signature-flags runtime {} \;
-              
-              echo "Signing main bundle..."
-              rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                --code-signature-flags runtime "${{ env.appname }}.app"
-            else
-              echo "Error: Invalid app bundle structure"
-              exit 1
-            fi
-            
-            # Clean up
-            rm certificate.p12 
+          KEYCHAIN_PATH=$RUNNER_TEMP/app_signing.keychain
+          echo "${{ secrets.MACOS_P12_BASE64 }}" | base64 --decode > $RUNNER_TEMP/certificate.p12
+
+          security create-keychain -p "${{ secrets.MACOS_P12_PASSWORD }}" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "${{ secrets.MACOS_P12_PASSWORD }}" $KEYCHAIN_PATH
+          security import $RUNNER_TEMP/certificate.p12 -k $KEYCHAIN_PATH -P "${{ secrets.MACOS_P12_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.MACOS_P12_PASSWORD }}" $KEYCHAIN_PATH
+          security default-keychain -s $KEYCHAIN_PATH
+          security find-identity -v
+
+      - name: Import Notarize Key
+        if: env.MACOS_P12_BASE64 != '' && env.MACOS_P12_BASE64 != null
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: notary_key.json
+          fileDir: ${{ github.workspace }}
+          encodedString: ${{ secrets.MACOS_NOTARIZE_JSON }}
+
+      - name: Sign macOS app bundle
+        if: env.MACOS_P12_BASE64 != '' && env.MACOS_P12_BASE64 != null
+        run: |
+          cd flutter/build/macos/Build/Products/Release
+          # Rename RustDesk.app to the custom app name first
+          if [ -d "RustDesk.app" ]; then
+            mv "RustDesk.app" "${{ env.appname }}.app"
+            echo "Renamed RustDesk.app to ${{ env.appname }}.app"
+          fi
+          
+          TARGET_APP="${{ env.appname }}.app"
+          if [ ! -d "$TARGET_APP" ]; then
+            echo "Error: App bundle not found at $TARGET_APP"
+            exit 1
+          fi
+
+          echo "Codesigning $TARGET_APP with Hardened Runtime and Timestamp..."
+          codesign --force --options runtime --timestamp \
+            -s "${{ secrets.MACOS_CODESIGN_IDENTITY }}" \
+            --deep --strict "$TARGET_APP" -vvv
 
       - name: Ad-hoc Sign macOS app bundle (Fallback)
         if: env.MACOS_P12_BASE64 == '' || env.MACOS_P12_BASE64 == null
         shell: bash
         run: |
-            cd flutter/build/macos/Build/Products/Release
-            
-            # Renombrar RustDesk.app al nombre de la marca blanca si aplica
-            if [ -d "RustDesk.app" ]; then
-              mv "RustDesk.app" "${{ env.appname }}.app"
-              echo "RustDesk.app renombrado a ${{ env.appname }}.app"
-            fi
-            
-            TARGET_APP="${{ env.appname }}.app"
-            
-            if [ -d "$TARGET_APP" ]; then
-              echo "Limpiando atributos extendidos..."
-              xattr -cr "$TARGET_APP" || true
-              
-              echo "Re-firmando $TARGET_APP de forma Ad-Hoc y recursiva..."
-              codesign --force --deep --sign - "$TARGET_APP"
-              echo "Firma Ad-Hoc completada con exito."
-            else
-              echo "Error: No se encontro la app bundle en $TARGET_APP para firmar."
-              exit 1
-            fi
-
-      - name: Create DMG
-        run: |
-          cd /Users/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/flutter/build/macos/Build/Products/Release
-          # Print directory contents for debugging
-          echo "Directory contents:"
-          ls -la
-          # Find the actual .app bundle
+          cd flutter/build/macos/Build/Products/Release
           if [ -d "RustDesk.app" ]; then
-            # First rename the app if it's still called RustDesk.app
             mv "RustDesk.app" "${{ env.appname }}.app"
           fi
-          if [ ! -d "${{ env.appname }}.app" ]; then
-            echo "Could not find .app bundle!"
-            exit 1
+          TARGET_APP="${{ env.appname }}.app"
+          if [ -d "$TARGET_APP" ]; then
+            xattr -cr "$TARGET_APP" || true
+            codesign --force --deep --sign - "$TARGET_APP"
+            echo "Ad-Hoc sign completed."
           fi
-          echo "Creating DMG for ${{ env.appname }}.app"
+
+      - name: Create DMG, Sign and Notarize
+        run: |
+          cd flutter/build/macos/Build/Products/Release
+          TARGET_APP="${{ env.appname }}.app"
+          DMG_NAME="${{ env.appname }}-${{ matrix.job.arch }}.dmg"
+          
+          echo "Creating DMG for $TARGET_APP..."
           create-dmg \
             --volname "${{ env.appname }}" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
-            --icon "${{ env.appname }}.app" 200 190 \
-            --hide-extension "${{ env.appname }}.app" \
+            --icon "$TARGET_APP" 200 190 \
+            --hide-extension "$TARGET_APP" \
             --app-drop-link 600 185 \
-            "${{ env.appname }}-${{ matrix.job.arch }}.dmg" \
-            "${{ env.appname }}.app"
-          mv "${{ env.appname }}-${{ matrix.job.arch }}.dmg" $GITHUB_WORKSPACE/
+            "$DMG_NAME" \
+            "$TARGET_APP"
+
+          # If certificate is present, sign and notarize the DMG
+          if [ -n "${{ secrets.MACOS_P12_BASE64 }}" ]; then
+            echo "Signing DMG file..."
+            codesign --force --options runtime --timestamp \
+              -s "${{ secrets.MACOS_CODESIGN_IDENTITY }}" \
+              --deep --strict "$DMG_NAME" -vvv
+
+            echo "Submitting DMG to Apple Notary Service..."
+            rcodesign notary-submit --api-key-path ${{ github.workspace }}/notary_key.json --staple "$DMG_NAME"
+            echo "Apple Notarization and Stapling complete!"
+          fi
+
+          mv "$DMG_NAME" $GITHUB_WORKSPACE/
   
       - name: Rename rustdesk
         if: env.UPLOAD_ARTIFACT == 'true'
