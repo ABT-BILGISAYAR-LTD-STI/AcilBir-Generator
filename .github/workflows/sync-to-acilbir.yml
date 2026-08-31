@@ -1,11 +1,11 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# rdgen Repo → AcilBir.com Otomatik Senkronizasyon
+# AcilBir-Generator Repo → AcilBir.com Otomatik Senkronizasyon
 # ═══════════════════════════════════════════════════════════════════════════════
-# rdgen reposuna push yapıldığında, değişiklikleri
-# AcilBir.com monorepo'sundaki rustdesk-pro/rdgen/ klasörüne yansıtır.
+# AcilBir-Generator reposuna push yapıldığında, değişiklikleri
+# AcilBir.com monorepo'sundaki acilbir-pro/acilbir-generator/ klasörüne yansıtır.
 # Loop önleme: [skip-sync] marker'lı commit'lerde çalışmaz.
 
-name: Sync rdgen → AcilBir.com
+name: Sync AcilBir-Generator → AcilBir.com
 
 on:
   push:
@@ -50,6 +50,6 @@ jobs:
             exit 0
           fi
 
-          git commit -m "[skip-sync] Sync from rdgen ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          git commit -m "[skip-sync] Sync from AcilBir-Generator ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
           git push
           echo "✅ AcilBir.com reposuna senkronize edildi."
