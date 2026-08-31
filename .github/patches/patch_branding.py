@@ -45,7 +45,7 @@ def main():
     raw_ver = os.environ.get("VERSION", "").strip()
     clean_ver = re.sub(r'^[vV]', '', raw_ver).strip()
     if not clean_ver or clean_ver in ("master", "nightly"):
-        clean_ver = "1.4.10"
+        clean_ver = "1.4.10-1"
 
     appname = os.environ.get("appname", "").strip()
     if not appname:
@@ -53,7 +53,7 @@ def main():
 
     compname = os.environ.get("compname", "").strip()
     if not compname:
-        compname = "ABT Bilgisayar"
+        compname = "ABT Bilgisayar Programlama ve Tic.Ltd.Sti."
 
     url_link = os.environ.get("urlLink", "").strip()
     if not url_link:
@@ -93,23 +93,30 @@ def main():
     replace_in_file("libs/portable/Cargo.toml", r'description\s*=\s*"RustDesk Remote Desktop"', f'description = "{appname} Remote Desktop"')
 
     replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
-    replace_in_file("flutter/pubspec.yaml", r'(?m)^version:\s*.*', f'version: {clean_ver}+1')
+    
+    # Flutter pubspec.yaml version (supports suffixes like 1.4.10-1+1)
+    if '+' in clean_ver:
+        pubspec_ver = clean_ver
+    else:
+        pubspec_ver = f"{clean_ver}+1"
+    replace_in_file("flutter/pubspec.yaml", r'(?m)^version:\s*.*', f'version: {pubspec_ver}')
 
     # -------------------------------------------------------------
     # 2. WINDOWS PLATFORM (RC, MSI, Windows Service, Registry)
     # -------------------------------------------------------------
-    ver_parts = clean_ver.split('.')
-    while len(ver_parts) < 4:
-        ver_parts.append('0')
-    win_ver_comma = ",".join(ver_parts[:4])
-    win_ver_dot = ".".join(ver_parts[:4])
+    # Extract numeric version parts for binary RC structure (e.g. 1.4.10-1 -> 1,4,10,1)
+    nums = re.findall(r'\d+', clean_ver)
+    while len(nums) < 4:
+        nums.append('0')
+    win_ver_comma = ",".join(nums[:4])
+    win_ver_dot = ".".join(nums[:4])
 
     rc_file = "flutter/windows/runner/Runner.rc"
     if os.path.exists(rc_file):
         replace_in_file(rc_file, r'PRODUCT_VERSION\s+[0-9,]+', f'PRODUCT_VERSION {win_ver_comma}')
         replace_in_file(rc_file, r'FILE_VERSION\s+[0-9,]+', f'FILE_VERSION {win_ver_comma}')
-        replace_in_file(rc_file, r'VALUE\s+"ProductVersion",\s+"[^"]+"', f'VALUE "ProductVersion", "{win_ver_dot}\\0"')
-        replace_in_file(rc_file, r'VALUE\s+"FileVersion",\s+"[^"]+"', f'VALUE "FileVersion", "{win_ver_dot}\\0"')
+        replace_in_file(rc_file, r'VALUE\s+"ProductVersion",\s+"[^"]+"', f'VALUE "ProductVersion", "{clean_ver}\\0"')
+        replace_in_file(rc_file, r'VALUE\s+"FileVersion",\s+"[^"]+"', f'VALUE "FileVersion", "{clean_ver}\\0"')
         replace_in_file(rc_file, r'VALUE\s+"ProductName",\s+"[^"]+"', f'VALUE "ProductName", "{appname}\\0"')
         replace_in_file(rc_file, r'VALUE\s+"FileDescription",\s+"[^"]+"', f'VALUE "FileDescription", "{appname} Remote Desktop\\0"')
         replace_in_file(rc_file, r'VALUE\s+"InternalName",\s+"[^"]+"', f'VALUE "InternalName", "{appname}\\0"')
