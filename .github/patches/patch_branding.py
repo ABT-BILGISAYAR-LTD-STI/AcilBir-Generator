@@ -59,6 +59,22 @@ def main():
     if not url_link:
         url_link = "https://acilbir.com"
 
+    server_host = os.environ.get("server", "").strip()
+    if not server_host:
+        server_host = "acilbir.com"
+
+    server_key = os.environ.get("key", "").strip()
+
+    api_server = os.environ.get("apiServer", "").strip()
+    if not api_server:
+        api_server = f"https://{server_host}"
+
+    download_link = os.environ.get("downloadLink", "").strip()
+    if not download_link:
+        download_link = f"https://{server_host}/api/client-downloads/download/Windows"
+
+    variant = os.environ.get("variant", "client").strip()
+
     android_app_id = os.environ.get("androidappid", "").strip()
     clean_id = sanitize_identifier(appname)
     if not android_app_id or android_app_id == "com.carriez.flutter_hbb":
@@ -67,13 +83,17 @@ def main():
     bundle_id = f"com.{clean_id}.app"
 
     print(f"[patch_branding] ======================================")
-    print(f"[patch_branding] Applying Universal Branding Patch:")
+    print(f"[patch_branding] Applying Universal Branding & Update Patch:")
     print(f"[patch_branding]   Version:         {clean_ver}")
     print(f"[patch_branding]   App Name:        {appname}")
     print(f"[patch_branding]   Company Name:    {compname}")
     print(f"[patch_branding]   Bundle / App ID: {bundle_id}")
     print(f"[patch_branding]   Android App ID:  {android_app_id}")
+    print(f"[patch_branding]   Server Host:     {server_host}")
+    print(f"[patch_branding]   API Server:      {api_server}")
     print(f"[patch_branding]   URL Link:        {url_link}")
+    print(f"[patch_branding]   Download Link:   {download_link}")
+    print(f"[patch_branding]   Variant:         {variant}")
     print(f"[patch_branding] ======================================")
 
     # -------------------------------------------------------------
@@ -94,7 +114,7 @@ def main():
 
     replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
     
-    # Flutter pubspec.yaml version (supports suffixes like 1.4.10-1+1)
+    # Flutter pubspec.yaml version
     if '+' in clean_ver:
         pubspec_ver = clean_ver
     else:
@@ -102,14 +122,41 @@ def main():
     replace_in_file("flutter/pubspec.yaml", r'(?m)^version:\s*.*', f'version: {pubspec_ver}')
 
     # -------------------------------------------------------------
-    # 2. WINDOWS PLATFORM (RC, MSI, Windows Service, Registry)
+    # 2. EMBEDDED SERVER & AUTO-UPDATE CONFIGURATION
     # -------------------------------------------------------------
-    # Extract numeric version parts for binary RC structure (e.g. 1.4.10-1 -> 1,4,10,1)
+    if server_host:
+        replace_exact("libs/hbb_common/src/config.rs", "rs-ny.rustdesk.com", server_host)
+        replace_exact("libs/hbb_common/src/config.rs", "rustdesk.com", server_host)
+    if server_key:
+        replace_exact("libs/hbb_common/src/config.rs", "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=", server_key)
+
+    release_suffix = ""
+    if variant == "admin":
+        release_suffix = "/admin"
+    elif variant == "beta":
+        release_suffix = "/beta"
+
+    update_api_url = f"{api_server}/api/software/releases/latest{release_suffix}"
+
+    replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url)
+    replace_exact("libs/hbb_common/src/lib.rs", "https://acilbir.com/api/software/releases/latest", update_api_url)
+    replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url)
+    replace_exact("flutter/lib/common.dart", "https://acilbir.com/api/software/releases/latest", update_api_url)
+    replace_exact("src/common.rs", "https://admin.rustdesk.com", api_server)
+    replace_exact("src/common.rs", "https://api.rustdesk.com/version/latest", update_api_url)
+
+    replace_exact("flutter/lib/desktop/pages/desktop_home_page.dart", "https://rustdesk.com/download", download_link)
+    replace_exact("flutter/lib/mobile/pages/connection_page.dart", "https://rustdesk.com/download", download_link)
+    replace_exact("src/ui/index.tis", "https://rustdesk.com/download", download_link)
+    replace_exact("flutter/lib/desktop/widgets/update_progress.dart", "$downloadUrl/$downloadFile", download_link)
+
+    # -------------------------------------------------------------
+    # 3. WINDOWS PLATFORM (RC, MSI, Windows Service, Registry)
+    # -------------------------------------------------------------
     nums = re.findall(r'\d+', clean_ver)
     while len(nums) < 4:
         nums.append('0')
     win_ver_comma = ",".join(nums[:4])
-    win_ver_dot = ".".join(nums[:4])
 
     rc_file = "flutter/windows/runner/Runner.rc"
     if os.path.exists(rc_file):
@@ -124,19 +171,17 @@ def main():
         replace_in_file(rc_file, r'VALUE\s+"CompanyName",\s+"[^"]+"', f'VALUE "CompanyName", "{compname}\\0"')
         replace_in_file(rc_file, r'VALUE\s+"LegalCopyright",\s+"[^"]+"', f'VALUE "LegalCopyright", "Copyright (C) 2026 {compname}. All rights reserved.\\0"')
 
-    # Windows Service name & Mutex
     replace_exact("src/platform/windows.rs", 'const SERVICE_NAME: &str = "RustDesk";', f'const SERVICE_NAME: &str = "{appname}";')
     replace_exact("src/platform/windows.rs", 'const SERVICE_NAME: &str = "rustdesk";', f'const SERVICE_NAME: &str = "{clean_id}";')
     replace_exact("libs/portable/src/main.rs", 'const APP_PREFIX: &str = "rustdesk";', f'const APP_PREFIX: &str = "{appname}";')
 
-    # MSI packaging
     replace_exact("res/msi/Package/License.rtf", "Purslane Tech Pte. Ltd.", compname)
     replace_exact("res/msi/Package/License.rtf", "Purslane Ltd", compname)
     replace_exact("res/msi/Package/License.rtf", "RustDesk", appname)
     replace_exact("res/msi/Package/License.rtf", "rustdesk.com", url_link)
 
     # -------------------------------------------------------------
-    # 3. ANDROID PLATFORM (applicationId, Manifest, Strings, Kotlin)
+    # 4. ANDROID PLATFORM
     # -------------------------------------------------------------
     replace_in_file("flutter/android/app/build.gradle", r'applicationId\s+"[^"]+"', f'applicationId "{android_app_id}"')
     replace_in_file("flutter/android/app/build.gradle", r'versionName\s+"[^"]+"', f'versionName "{clean_ver}"')
@@ -145,7 +190,6 @@ def main():
     replace_exact("flutter/android/app/src/main/AndroidManifest.xml", 'android:label="RustDesk"', f'android:label="{appname}"')
     replace_exact("flutter/android/app/src/main/AndroidManifest.xml", 'android:label="RustDesk Input"', f'android:label="{appname} Input"')
     
-    # Android Kotlin service labels & notifications
     for kt in glob.glob("flutter/android/app/src/main/kotlin/**/*.kt", recursive=True):
         replace_exact(kt, "RustDesk is Open", f"{appname} is Open")
         replace_exact(kt, "Show Rustdesk", f"Show {appname}")
@@ -153,7 +197,7 @@ def main():
         replace_exact(kt, '"RustDesk"', f'"{appname}"')
 
     # -------------------------------------------------------------
-    # 4. MACOS & IOS PLATFORM (Xcode, xcconfig, Info.plist, XIB)
+    # 5. MACOS & IOS PLATFORM
     # -------------------------------------------------------------
     pbx = "flutter/macos/Runner.xcodeproj/project.pbxproj"
     replace_in_file(pbx, r'PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;', f'PRODUCT_BUNDLE_IDENTIFIER = {bundle_id};')
@@ -187,7 +231,7 @@ def main():
     replace_exact("libs/hbb_common/src/config.rs", 'com.carriez', f'com.{clean_id}')
 
     # -------------------------------------------------------------
-    # 5. LINUX PLATFORM (Desktop, Service, Specs, PKGBUILD)
+    # 6. LINUX PLATFORM
     # -------------------------------------------------------------
     for dt in ["res/rustdesk.desktop", "res/rustdesk-link.desktop"]:
         replace_in_file(dt, r'Name\s*=.*', f'Name={appname}')
@@ -202,7 +246,7 @@ def main():
     replace_in_file("res/rpm-suse.spec", r'Version:\s*.*', f'Version:    {clean_ver}')
 
     # -------------------------------------------------------------
-    # 6. UNIVERSAL APP STRINGS, COMPANY & LANGUAGE FILES
+    # 7. UNIVERSAL APP STRINGS, COMPANY & LANGUAGE FILES
     # -------------------------------------------------------------
     replace_exact("src/main.rs", "Purslane Tech Pte. Ltd.", compname)
     replace_exact("src/main.rs", "Purslane Ltd.", compname)
@@ -214,11 +258,9 @@ def main():
     replace_exact("flutter/lib/desktop/pages/desktop_setting_page.dart", "Purslane Tech Pte. Ltd.", compname)
     replace_exact("flutter/lib/desktop/pages/desktop_setting_page.dart", "Purslane Ltd.", compname)
 
-    # 50+ Languages in src/lang/*.rs
     for lang_file in glob.glob("src/lang/*.rs"):
         replace_exact(lang_file, "RustDesk", appname)
 
-    # Replace Official URLs
     replace_exact("build.py", "https://rustdesk.com", url_link)
     replace_exact("flutter/lib/common.dart", "https://rustdesk.com", url_link)
     replace_exact("flutter/lib/desktop/pages/desktop_setting_page.dart", "https://rustdesk.com", url_link)
