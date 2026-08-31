@@ -899,9 +899,7 @@ jobs:
           GENURL="${{ env.genurl }}"
           API_SERVER="${{ env.apiServer }}"
           AUTH_TOKEN="${{ env.token }}"
-          if [ -z "$AUTH_TOKEN" ]; then
-            AUTH_TOKEN="${{ secrets.GH_PAT }}"
-          fi
+          if [ -z "$AUTH_TOKEN" ]; then AUTH_TOKEN="${{ secrets.GHBEARER || secrets.GH_PAT || secrets.GITHUB_TOKEN }}"; fi
 
           # Clean API_SERVER URL
           API_SERVER="${API_SERVER%/}"
@@ -947,7 +945,7 @@ jobs:
               echo "::warning::apiServer is empty, skipping direct callback (ReleaseSyncService will sync from GitHub Releases)"
             fi
             
-            if [[ "${{ env.rdgen }}" == 'true' ]] && [ -n "$GENURL" ]; then
+            if [ -n "$GENURL" ] && [ -n "${{ env.uuid }}" ]; then
               GENURL="${GENURL%/}"
               if [[ "$GENURL" != http* ]]; then GENURL="http://$GENURL"; fi
               curl -k -s -L -o /dev/null \

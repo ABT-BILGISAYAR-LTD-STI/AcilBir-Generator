@@ -664,24 +664,35 @@ def save_png(file, uuid, domain, name):
 
 def save_custom_client(request):
     """GitHub Actions workflow callback.
-
-    Bu endpoint sadece iki iş yapar:
-    1. GithubRun status'unu "success" olarak günceller (build tracking UI için)
-    2. Dosya upload fallback'i (opsiyonel)
-
-    client_downloads tablosuna yazma işi Go API tarafından yapılır
-    (hem callback hem de cron sync ile).
+    Updates GithubRun status to 'success' and optional file upload.
+    Accepts JWT session token, GHBEARER, SH_SECRET, or valid UUID in DB.
     """
+    myuuid = request.POST.get('uuid') or request.GET.get('uuid')
+    filename = request.POST.get('filename') or request.GET.get('filename')
+
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    token = ''
     if auth_header.startswith('Bearer '):
         token = auth_header.split(' ', 1)[1]
-        if token != _settings.GHBEARER:
-            return HttpResponse("Unauthorized", status=401)
-    elif not request.FILES:
-        return HttpResponse("Unauthorized", status=401)
 
-    myuuid = request.POST.get('uuid')
-    filename = request.POST.get('filename')
+    # Verify authorization
+    is_authorized = False
+    if not token and not getattr(_settings, 'GHBEARER', None):
+        is_authorized = True
+    elif token and token in [_settings.GHBEARER, getattr(_settings, 'SH_SECRET', None), os.environ.get('ACILBIR_API_GITHUB_CALLBACK_TOKEN'), os.environ.get('RUSTDESK_API_GITHUB_CALLBACK_TOKEN')]:
+        is_authorized = True
+    elif token:
+        valid_jwt, _ = verify_token(token)
+        if valid_jwt:
+            is_authorized = True
+
+    # If uuid matches an existing GithubRun in DB, grant authorization
+    if not is_authorized and myuuid:
+        if GithubRun.objects.filter(uuid=myuuid).exists():
+            is_authorized = True
+
+    if not is_authorized and not request.FILES:
+        return HttpResponse("Unauthorized", status=401)
 
     if myuuid:
         try:
@@ -689,6 +700,7 @@ def save_custom_client(request):
             if gh_run:
                 gh_run.status = "success"
                 gh_run.save()
+                print(f"[callback] GithubRun {myuuid} marked as success.")
         except Exception as e:
             print(f"Error updating GithubRun status: {e}")
 
