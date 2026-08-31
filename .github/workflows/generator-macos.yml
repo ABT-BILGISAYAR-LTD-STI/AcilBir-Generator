@@ -900,33 +900,8 @@ jobs:
               -s "${{ secrets.MACOS_CODESIGN_IDENTITY }}" \
               --deep --strict "$DMG_NAME" -vvv
 
-            # Prepare Apple Notary credentials from NOTARIZE_JSON environment variable
-            python3 -c '
-            import os, json, sys, base64
-
-            raw = os.environ.get("NOTARIZE_JSON", "").strip()
-            if raw:
-                try:
-                    data = json.loads(base64.b64decode(raw).decode("utf-8"))
-                except Exception:
-                    try:
-                        data = json.loads(raw)
-                    except Exception as e:
-                        print("JSON Parse Error:", e)
-                        sys.exit(0)
-
-                os.makedirs("/tmp/apple_notary", exist_ok=True)
-                key_id = data.get("key_id", "")
-                issuer_id = data.get("issuer_id", "")
-                private_key = data.get("private_key", "")
-
-                with open("/tmp/apple_notary/AuthKey.p8", "w") as f:
-                    f.write(private_key)
-
-                with open("/tmp/apple_notary/credentials.env", "w") as f:
-                    f.write("KEY_ID=" + key_id + "\n")
-                    f.write("ISSUER_ID=" + issuer_id + "\n")
-            '
+            # Extract Apple Notary credentials via setup_notary.py
+            python3 $GITHUB_WORKSPACE/.github/patches/setup_notary.py
 
             if [ -f "/tmp/apple_notary/credentials.env" ]; then
               source /tmp/apple_notary/credentials.env
