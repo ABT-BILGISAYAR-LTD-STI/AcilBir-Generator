@@ -837,14 +837,6 @@ jobs:
           security default-keychain -s $KEYCHAIN_PATH
           security find-identity -v
 
-      - name: Import Notarize Key
-        if: env.MACOS_P12_BASE64 != '' && env.MACOS_P12_BASE64 != null
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: notary_key.json
-          fileDir: ${{ github.workspace }}
-          encodedString: ${{ secrets.MACOS_NOTARIZE_JSON }}
-
       - name: Sign macOS app bundle
         if: env.MACOS_P12_BASE64 != '' && env.MACOS_P12_BASE64 != null
         run: |
@@ -906,9 +898,43 @@ jobs:
               -s "${{ secrets.MACOS_CODESIGN_IDENTITY }}" \
               --deep --strict "$DMG_NAME" -vvv
 
-            echo "Submitting DMG to Apple Notary Service..."
-            rcodesign notary-submit --api-key-path ${{ github.workspace }}/notary_key.json --staple "$DMG_NAME"
-            echo "Apple Notarization and Stapling complete!"
+            # Prepare Apple Notary credentials from MACOS_NOTARIZE_JSON
+            python3 -c '
+          import json, os, sys, base64
+          raw = """${{ secrets.MACOS_NOTARIZE_JSON }}""".strip()
+          if raw:
+              try:
+                  data = json.loads(base64.b64decode(raw).decode("utf-8"))
+              except Exception:
+                  try:
+                      data = json.loads(raw)
+                  except Exception as e:
+                      print(f"JSON Parse Error: {e}")
+                      sys.exit(0)
+              
+              os.makedirs("/tmp/apple_notary", exist_ok=True)
+              with open("/tmp/apple_notary/AuthKey.p8", "w") as f:
+                  f.write(data.get("private_key", ""))
+              with open("/tmp/apple_notary/credentials.env", "w") as f:
+                  f.write(f"KEY_ID={data.get(\"key_id\", \"\")}\n")
+                  f.write(f"ISSUER_ID={data.get(\"issuer_id\", \"\")}\n")
+          '
+
+            if [ -f "/tmp/apple_notary/credentials.env" ]; then
+              source /tmp/apple_notary/credentials.env
+              if [ -n "$KEY_ID" ] && [ -n "$ISSUER_ID" ]; then
+                echo "Submitting DMG to Apple Notary Service via xcrun notarytool..."
+                xcrun notarytool submit "$DMG_NAME" \
+                  --key /tmp/apple_notary/AuthKey.p8 \
+                  --key-id "$KEY_ID" \
+                  --issuer "$ISSUER_ID" \
+                  --wait
+
+                echo "Stapling Apple notarization ticket to DMG..."
+                xcrun stapler staple "$DMG_NAME"
+                echo "Apple Notarization and Stapling complete!"
+              fi
+            fi
           fi
 
           mv "$DMG_NAME" $GITHUB_WORKSPACE/
