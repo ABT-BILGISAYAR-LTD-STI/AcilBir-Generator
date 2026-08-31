@@ -431,7 +431,7 @@ def generator_view(request):
                     'status': "Starting generator...please wait",
                     'platform': result['platform'],
                     'log_url': result['log_url'],
-                    'version': result.get('version', '1.4.9')
+                    'version': result.get('version', '1.4.10-1')
                 })
             else:
                 return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
@@ -444,7 +444,7 @@ def check_for_file(request):
     filename = request.GET.get('filename')
     uuid_val = request.GET.get('uuid')
     platform = request.GET.get('platform')
-    version = request.GET.get('version', '1.4.9')
+    version = request.GET.get('version', '1.4.10-1')
 
     result = _get_run_status(uuid_val)
     if not result['found']:
@@ -486,7 +486,7 @@ def check_for_file(request):
 def download(request):
     filename = request.GET.get('filename')
     uuid_val = request.GET.get('uuid')
-    client_version = request.GET.get('version', '1.4.9')
+    client_version = request.GET.get('version', '1.4.10-1')
     
     from django.shortcuts import redirect
     

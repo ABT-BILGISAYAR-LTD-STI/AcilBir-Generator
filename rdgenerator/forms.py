@@ -6,7 +6,7 @@ class GenerateForm(forms.Form):
     platform = forms.ChoiceField(choices=[('windows','Windows 64Bit'),('windows-x86','Windows 32Bit'),('linux','Linux'),('android','Android'),('macos','macOS')], initial='windows')
     version = forms.CharField(
         label="AcilBir Client Version",
-        initial='1.4.10',
+        initial='1.4.10-1',
         required=True,
         widget=forms.TextInput(attrs={
             'placeholder': 'Örn: 1.4.10, 1.5.0, 2.0.0 veya master',

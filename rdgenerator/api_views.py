@@ -6,7 +6,7 @@ from .views import generate_custom_client, _get_run_status
 
 # Field validation constraints (mirrored from GenerateForm)
 PLATFORM_CHOICES = ['windows', 'windows-x86', 'linux', 'android', 'macos']
-VERSION_CHOICES = ['master', 'nightly', '1.4.9', '1.4.8', '1.4.7', '1.4.6', '1.4.5', '1.4.4', '1.4.3', '1.4.2', '1.4.1', '1.4.0']
+VERSION_CHOICES = ['master', 'nightly', '1.4.10-1', '1.4.10', '1.4.9', '1.4.8', '1.4.7', '1.4.6', '1.4.5', '1.4.4', '1.4.3', '1.4.2', '1.4.1', '1.4.0']
 DIRECTION_CHOICES = ['incoming', 'outgoing', 'both']
 INSTALLATION_CHOICES = ['installationY', 'installationN']
 SETTINGS_CHOICES = ['settingsY', 'settingsN']
@@ -55,7 +55,7 @@ def validate_generate_params(data):
     # Choice fields
     choice_validations = {
         'platform': (PLATFORM_CHOICES, 'windows'),
-        'version': (VERSION_CHOICES, '1.4.9'),
+        'version': (VERSION_CHOICES, '1.4.10-1'),
         'direction': (DIRECTION_CHOICES, 'both'),
         'installation': (INSTALLATION_CHOICES, 'installationY'),
         'settings': (SETTINGS_CHOICES, 'settingsY'),
@@ -323,12 +323,12 @@ def api_profile_build(request, profile_id):
     params = {
         'sh_secret_field': _settings.SH_SECRET,
         'platform': overrides.get('platform', 'windows'),
-        'version': overrides.get('version', '1.4.9'),
+        'version': overrides.get('version', '1.4.10-1'),
         'variant': profile.variant or 'client',
-        'exename': profile.exename or 'rustdesk',
-        'appname': profile.appname or 'rustdesk',
-        'compname': profile.compname or 'Purslane Ltd',
-        'androidappid': profile.androidappid or 'com.carriez.flutter_hbb',
+        'exename': profile.exename or 'AcilBir',
+        'appname': profile.appname or 'AcilBir',
+        'compname': profile.compname or 'ABT Bilgisayar Programlama ve Tic.Ltd.Sti.',
+        'androidappid': profile.androidappid or 'com.acilbir.app',
         'serverIP': profile.serverIP or '',
         'key': profile.key or '',
         'apiServer': profile.apiServer or '',
