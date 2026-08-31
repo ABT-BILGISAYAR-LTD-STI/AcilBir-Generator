@@ -772,9 +772,11 @@ jobs:
           python preprocess.py --app-name "$myappname" --arp -d ../../rustdesk
           nuget restore msi.sln
           msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10 /p:Version=1.0.0
-          cp ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi
-          mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
-          sha256sum ../../SignOutput/rustdesk.msi
+          if (Test-Path ./Package/bin/x64/Release/en-us/Package.msi) {
+            Copy-Item ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi -Force -ErrorAction SilentlyContinue
+            Move-Item ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi -Force -ErrorAction SilentlyContinue
+            Get-FileHash ../../SignOutput/rustdesk.msi -Algorithm SHA256 -ErrorAction SilentlyContinue
+          }
 
       - name: zip exe and msi
         continue-on-error: true
@@ -805,13 +807,19 @@ jobs:
           Remove-Item ./SignOutput/signed_files.zip
 
       - name: rename rustdesk.exe to filename.exe
+        shell: pwsh
         run: |
-          mv ./SignOutput/rustdesk.exe "./SignOutput/${{ env.filename }}.exe" || echo "rustdesk"
+          if (Test-Path ./SignOutput/rustdesk.exe) {
+            Move-Item -Force ./SignOutput/rustdesk.exe "./SignOutput/${{ env.filename }}.exe" -ErrorAction SilentlyContinue
+          }
 
       - name: rename rustdesk.msi to filename.msi
         continue-on-error: true
+        shell: pwsh
         run: |
-          mv ./SignOutput/rustdesk.msi "./SignOutput/${{ env.filename }}.msi" || echo "rustdesk"
+          if (Test-Path ./SignOutput/rustdesk.msi) {
+            Move-Item -Force ./SignOutput/rustdesk.msi "./SignOutput/${{ env.filename }}.msi" -ErrorAction SilentlyContinue
+          }
 
       - name: Upload build artifacts as Actions backup
         if: env.UPLOAD_ARTIFACT == 'true'
