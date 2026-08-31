@@ -138,7 +138,7 @@ jobs:
       - name: Apply macOS branding and dynamic versioning
         shell: bash
         run: |
-          python3 $GITHUB_WORKSPACE/.github/patches/patch_macos_branding.py
+          python3 $GITHUB_WORKSPACE/.github/patches/patch_branding.py
 
       - name: override download link for macOS platform
         shell: bash
