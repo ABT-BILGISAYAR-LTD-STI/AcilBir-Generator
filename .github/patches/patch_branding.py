@@ -112,8 +112,7 @@ def main():
     replace_in_file("libs/portable/Cargo.toml", r'OriginalFilename\s*=\s*"rustdesk.exe"', f'OriginalFilename = "{appname}.exe"')
     replace_in_file("libs/portable/Cargo.toml", r'description\s*=\s*"RustDesk Remote Desktop"', f'description = "{appname} Remote Desktop"')
 
-    replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*
-version\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
+    replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*\r?\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
     
     # Flutter pubspec.yaml version
     if '+' in clean_ver:
@@ -163,7 +162,6 @@ version\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
     if os.path.exists(rc_file):
         replace_in_file(rc_file, r'PRODUCT_VERSION\s+[0-9,]+', f'PRODUCT_VERSION {win_ver_comma}')
         replace_in_file(rc_file, r'FILE_VERSION\s+[0-9,]+', f'FILE_VERSION {win_ver_comma}')
-        # Use exact safe replacements for Runner.rc without regex backreference traps
         replace_exact(rc_file, '"Purslane Tech Pte. Ltd."', f'"{compname}"')
         replace_exact(rc_file, '"Purslane Ltd."', f'"{compname}"')
         replace_exact(rc_file, '"RustDesk Remote Desktop"', f'"{appname} Remote Desktop"')
