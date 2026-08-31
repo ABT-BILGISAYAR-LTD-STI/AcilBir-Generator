@@ -874,6 +874,8 @@ jobs:
           fi
 
       - name: Create DMG, Sign and Notarize
+        env:
+          NOTARIZE_JSON: ${{ secrets.MACOS_NOTARIZE_JSON }}
         run: |
           cd flutter/build/macos/Build/Products/Release
           TARGET_APP="${{ env.appname }}.app"
@@ -898,27 +900,33 @@ jobs:
               -s "${{ secrets.MACOS_CODESIGN_IDENTITY }}" \
               --deep --strict "$DMG_NAME" -vvv
 
-            # Prepare Apple Notary credentials from MACOS_NOTARIZE_JSON
+            # Prepare Apple Notary credentials from NOTARIZE_JSON environment variable
             python3 -c '
-          import json, os, sys, base64
-          raw = """${{ secrets.MACOS_NOTARIZE_JSON }}""".strip()
-          if raw:
-              try:
-                  data = json.loads(base64.b64decode(raw).decode("utf-8"))
-              except Exception:
-                  try:
-                      data = json.loads(raw)
-                  except Exception as e:
-                      print(f"JSON Parse Error: {e}")
-                      sys.exit(0)
-              
-              os.makedirs("/tmp/apple_notary", exist_ok=True)
-              with open("/tmp/apple_notary/AuthKey.p8", "w") as f:
-                  f.write(data.get("private_key", ""))
-              with open("/tmp/apple_notary/credentials.env", "w") as f:
-                  f.write(f"KEY_ID={data.get(\"key_id\", \"\")}\n")
-                  f.write(f"ISSUER_ID={data.get(\"issuer_id\", \"\")}\n")
-          '
+            import os, json, sys, base64
+
+            raw = os.environ.get("NOTARIZE_JSON", "").strip()
+            if raw:
+                try:
+                    data = json.loads(base64.b64decode(raw).decode("utf-8"))
+                except Exception:
+                    try:
+                        data = json.loads(raw)
+                    except Exception as e:
+                        print("JSON Parse Error:", e)
+                        sys.exit(0)
+
+                os.makedirs("/tmp/apple_notary", exist_ok=True)
+                key_id = data.get("key_id", "")
+                issuer_id = data.get("issuer_id", "")
+                private_key = data.get("private_key", "")
+
+                with open("/tmp/apple_notary/AuthKey.p8", "w") as f:
+                    f.write(private_key)
+
+                with open("/tmp/apple_notary/credentials.env", "w") as f:
+                    f.write("KEY_ID=" + key_id + "\n")
+                    f.write("ISSUER_ID=" + issuer_id + "\n")
+            '
 
             if [ -f "/tmp/apple_notary/credentials.env" ]; then
               source /tmp/apple_notary/credentials.env
