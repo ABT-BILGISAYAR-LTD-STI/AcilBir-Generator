@@ -47,7 +47,7 @@ def main():
 
     compname = os.environ.get("compname", "").strip()
     if not compname:
-        compname = "ABT Bilgisayar"
+        compname = "ABT Bilgisayar Programlama ve Tic.Ltd.Sti."
 
     url_link = os.environ.get("urlLink", "").strip()
     if not url_link:
