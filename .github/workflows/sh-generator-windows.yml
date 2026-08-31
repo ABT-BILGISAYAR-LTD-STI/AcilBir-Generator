@@ -115,12 +115,12 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       
       - name: Set rdgen value
-        if: ${{ env.rdgen == 'true' }}
+        if: ${{ (env.generator == 'true' || env.rdgen == 'true') }}
         run: |
           echo "STATUS_URL=${{ env.genurl }}/updategh" >> $env:GITHUB_ENV
 
       - name: Set rdgen value
-        if: ${{ env.rdgen == 'false' }}
+        if: ${{ (env.generator == 'false' || env.rdgen == 'false') }}
         run: |
           echo "STATUS_URL=${{ env.apiServer }}/api/updategh" >> $env:GITHUB_ENV
 
@@ -1053,12 +1053,12 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       
       - name: Set rdgen value
-        if: ${{ env.rdgen == 'true' }}
+        if: ${{ (env.generator == 'true' || env.rdgen == 'true') }}
         run: |
           echo "STATUS_URL=${{ env.genurl }}/updategh" >> $env:GITHUB_ENV
 
       - name: Set rdgen value
-        if: ${{ env.rdgen == 'false' }}
+        if: ${{ (env.generator == 'false' || env.rdgen == 'false') }}
         run: |
           echo "STATUS_URL=${{ env.apiServer }}/api/updategh" >> $env:GITHUB_ENV
 

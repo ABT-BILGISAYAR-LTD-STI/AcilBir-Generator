@@ -2,17 +2,17 @@ FROM python:3.13-alpine
 
 RUN adduser -D user
 
-WORKDIR /opt/rdgen
+WORKDIR /opt/acilbir-generator
 
 # Copy files with correct ownership before switching to non-root
 COPY --chown=user:user . .
 
 # WORKDIR is owned by root — user needs write access for db.sqlite3
-RUN chown user:user /opt/rdgen
+RUN chown user:user /opt/acilbir-generator
 
 # Pre-create folders so named volumes inherit user:user ownership
-RUN mkdir -p /opt/rdgen/exe /opt/rdgen/png /opt/rdgen/temp_zips /opt/rdgen/downloads \
- && chown -R user:user /opt/rdgen/exe /opt/rdgen/png /opt/rdgen/temp_zips /opt/rdgen/downloads
+RUN mkdir -p /opt/acilbir-generator/exe /opt/acilbir-generator/png /opt/acilbir-generator/temp_zips /opt/acilbir-generator/downloads \
+ && chown -R user:user /opt/acilbir-generator/exe /opt/acilbir-generator/png /opt/acilbir-generator/temp_zips /opt/acilbir-generator/downloads
 
 USER user
 
