@@ -418,9 +418,10 @@ jobs:
           shell: pwsh
           continue_on_error: true
           command: |
-            # allowCustom not needed: HalilUral14/AcilBir already has native unsigned custom client support in common.rs
-            cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
-            python fixUpdaterDownloadUrl.py
+            if (Test-Path "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py") {
+              cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
+              python fixUpdaterDownloadUrl.py
+            }
 
       - name: Install LLVM and Clang
         uses: rustdesk-org/install-llvm-action-32bit@master

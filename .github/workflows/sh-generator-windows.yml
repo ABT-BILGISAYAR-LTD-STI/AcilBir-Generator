@@ -437,12 +437,10 @@ jobs:
           retry_wait_seconds: 15
           shell: pwsh
           command: |
-            # allowCustom.py not needed: HalilUral14/AcilBir already has native unsigned custom client support in common.rs
-            cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
-            python fixUpdaterDownloadUrl.py
-            # Remove Setup Server Tip
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff -OutFile removeSetupServerTip.diff
-            #git apply removeSetupServerTip.diff
+            if (Test-Path "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py") {
+              cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
+              python fixUpdaterDownloadUrl.py
+            }
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1

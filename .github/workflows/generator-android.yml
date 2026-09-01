@@ -622,8 +622,10 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
-            python fixUpdaterDownloadUrl.py
+            if [ -f "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" ]; then
+              cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
+              python fixUpdaterDownloadUrl.py || true
+            fi
 
       - name: replace flutter icons
         if: ${{ env.iconlink_url != 'false' }}

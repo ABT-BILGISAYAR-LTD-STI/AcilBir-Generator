@@ -199,11 +199,10 @@ jobs:
             sed -i '' 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./flutter/lib/common.dart 2>/dev/null || true
           fi
           
-          # allowCustom.py not needed: HalilUral14/AcilBir already has native unsigned custom client support in common.rs
-          cp ${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py fixUpdaterDownloadUrl.py
-          python fixUpdaterDownloadUrl.py
-          wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff
-          #git apply removeSetupServerTip.diff
+          if [ -f "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" ]; then
+            cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
+            python fixUpdaterDownloadUrl.py || true
+          fi
             
           # Update pubspec.yaml with proper YAML formatting
           cp ./flutter/pubspec.yaml ./flutter/pubspec.yaml.bak
