@@ -285,7 +285,8 @@ def generate_custom_client(params, full_url):
         "androidappid": androidappid,
         "filename": filename,
         "token": _settings.GHBEARER,
-        "variant": variant if variant else 'client'
+        "variant": variant if variant else 'client',
+        "version": version
     }
 
     temp_json_path = f"data_{uuid.uuid4()}.json"

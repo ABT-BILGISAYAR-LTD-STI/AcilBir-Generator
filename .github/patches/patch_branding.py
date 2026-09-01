@@ -113,12 +113,14 @@ def main():
     replace_in_file("Cargo.toml", r'OriginalFilename\s*=\s*"rustdesk.exe"', f'OriginalFilename = "{appname}.exe"')
     replace_in_file("Cargo.toml", r'description\s*=\s*"RustDesk Remote Desktop"', f'description = "{appname} Remote Desktop"')
 
+    replace_in_file("libs/portable/Cargo.toml", r'(?m)^version\s*=\s*"[^"]+"', f'version = "{clean_ver}"', count=1)
     replace_in_file("libs/portable/Cargo.toml", r'ProductName\s*=\s*"RustDesk"', f'ProductName = "{appname}"')
     replace_in_file("libs/portable/Cargo.toml", r'FileDescription\s*=\s*"RustDesk Remote Desktop"', f'FileDescription = "{appname} Remote Desktop"')
     replace_in_file("libs/portable/Cargo.toml", r'OriginalFilename\s*=\s*"rustdesk.exe"', f'OriginalFilename = "{appname}.exe"')
     replace_in_file("libs/portable/Cargo.toml", r'description\s*=\s*"RustDesk Remote Desktop"', f'description = "{appname} Remote Desktop"')
 
     replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*\r?\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
+    replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk-portable-packer"\s*\r?\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
     
     # Flutter pubspec.yaml version
     if '+' in clean_ver:
