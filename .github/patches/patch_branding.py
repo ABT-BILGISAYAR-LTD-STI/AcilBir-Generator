@@ -60,13 +60,15 @@ def main():
         url_link = "https://acilbir.com"
 
     server_host = os.environ.get("server", "").strip()
-    if not server_host:
+    if not server_host or server_host == "rs-ny.rustdesk.com":
         server_host = "acilbir.com"
 
     server_key = os.environ.get("key", "").strip()
+    if not server_key or server_key == "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=":
+        server_key = "ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="
 
     api_server = os.environ.get("apiServer", "").strip()
-    if not api_server:
+    if not api_server or api_server.startswith("rs-ny.rustdesk.com"):
         api_server = f"https://{server_host}"
     elif not api_server.startswith("http://") and not api_server.startswith("https://"):
         api_server = f"https://{api_server}"

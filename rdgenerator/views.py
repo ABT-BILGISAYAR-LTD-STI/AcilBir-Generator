@@ -46,12 +46,14 @@ def generate_custom_client(params, full_url):
     apiServer = params.get('apiServer', '')
     urlLink = params.get('urlLink', '')
     downloadLink = params.get('downloadLink', '')
-    if not server:
-        server = 'rs-ny.rustdesk.com' #default rustdesk server
-    if not key:
-        key = 'OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=' #default rustdesk key
-    if not apiServer:
-        apiServer = server+":21114"
+    if not server or server == 'rs-ny.rustdesk.com':
+        server = 'acilbir.com'
+    if not key or key == 'OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=':
+        key = 'ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE='
+    if not apiServer or apiServer.startswith('rs-ny.rustdesk.com'):
+        apiServer = "https://acilbir.com"
+    elif not apiServer.startswith('http://') and not apiServer.startswith('https://'):
+        apiServer = f"https://{apiServer}"
     if not urlLink:
         urlLink = "https://acilbir.com"
     if not downloadLink:

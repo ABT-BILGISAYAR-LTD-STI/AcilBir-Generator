@@ -37,9 +37,9 @@ class GenerateForm(forms.Form):
     androidappid = forms.CharField(label="Custom Android App ID (replaces 'com.carriez.flutter_hbb')", required=False)
 
     #Custom Server
-    serverIP = forms.CharField(label="Host", required=False)
-    apiServer = forms.CharField(label="API Server", required=False)
-    key = forms.CharField(label="Key", required=False)
+    serverIP = forms.CharField(label="Host", required=False, initial="acilbir.com")
+    apiServer = forms.CharField(label="API Server", required=False, initial="https://acilbir.com")
+    key = forms.CharField(label="Key", required=False, initial="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE=")
     urlLink = forms.CharField(label="Custom URL for links", required=False, initial="https://acilbir.com")
     downloadLink = forms.CharField(label="Custom URL for downloading new versions", required=False, initial="https://acilbir.com/api/client-downloads/download/Windows")
     compname = forms.CharField(label="Company name", required=False, initial="ABT Bilgisayar Programlama ve Tic.Ltd.Sti.")

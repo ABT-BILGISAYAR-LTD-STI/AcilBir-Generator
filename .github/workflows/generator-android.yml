@@ -314,25 +314,32 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          sed -i -e 's|rs-ny.rustdesk.com|${{ env.server }}|' ./libs/hbb_common/src/config.rs
-          sed -i -e 's|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${{ env.key }}|' ./libs/hbb_common/src/config.rs
-          sed -i -e 's|https://admin.rustdesk.com|${{ env.apiServer }}|' ./src/common.rs
-          # ./flutter/pubspec.yaml
-          #sed -i '/intl:/a \ \ archive: ^3.6.1' ./flutter/pubspec.yaml
-          sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
-          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
-          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
-          sed -i -e 's|https://acilbir.com/api/software/releases/latest|${{ env.apiServer }}/api/software/releases/latest|' ./flutter/lib/common.dart 2>/dev/null || true
-          # Admin variant: güncelleme endpoint'ini admin kanalına yönlendir
+          CLEAN_SERVER="${{ env.server }}"
+          if [ -z "$CLEAN_SERVER" ] || [ "$CLEAN_SERVER" = "rs-ny.rustdesk.com" ]; then CLEAN_SERVER="acilbir.com"; fi
+          
+          CLEAN_KEY="${{ env.key }}"
+          if [ -z "$CLEAN_KEY" ] || [ "$CLEAN_KEY" = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=" ]; then CLEAN_KEY="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="; fi
+
+          CLEAN_API_SERVER="${{ env.apiServer }}"
+          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
+          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
+          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
+
+          sed -i -e "s|rs-ny.rustdesk.com|${CLEAN_SERVER}|" ./libs/hbb_common/src/config.rs
+          sed -i -e "s|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${CLEAN_KEY}|" ./libs/hbb_common/src/config.rs
+          sed -i -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
+
+          UPDATE_URL="${CLEAN_API_SERVER}/api/software/releases/latest"
           if [ "${{ env.variant }}" = "admin" ]; then
-            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
-            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/admin|' ./flutter/lib/common.dart 2>/dev/null || true
+            UPDATE_URL="${CLEAN_API_SERVER}/api/software/releases/latest/admin"
+          elif [ "${{ env.variant }}" = "beta" ]; then
+            UPDATE_URL="${CLEAN_API_SERVER}/api/software/releases/latest/beta"
           fi
-          # Beta variant: güncelleme endpoint'ini beta kanalına yönlendir
-          if [ "${{ env.variant }}" = "beta" ]; then
-            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./libs/hbb_common/src/lib.rs 2>/dev/null || true
-            sed -i 's|/api/software/releases/latest|/api/software/releases/latest/beta|' ./flutter/lib/common.dart 2>/dev/null || true
-          fi
+
+          sed -i -e "s|https://api.rustdesk.com/version/latest|${UPDATE_URL}|g" ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          sed -i -e "s|https://acilbir.com/api/software/releases/latest|${UPDATE_URL}|g" ./libs/hbb_common/src/lib.rs 2>/dev/null || true
+          sed -i -e "s|https://api.rustdesk.com/version/latest|${UPDATE_URL}|g" ./flutter/lib/common.dart 2>/dev/null || true
+          sed -i -e "s|https://acilbir.com/api/software/releases/latest|${UPDATE_URL}|g" ./flutter/lib/common.dart 2>/dev/null || true
 
       - name: add key recovery module
         shell: bash
@@ -504,11 +511,12 @@ jobs:
           }
           KEY_RECOVERY_EOF
 
-          # Remove leading whitespace from heredoc (cat indentation)
-          sed -i 's/^          //' ./src/key_recovery.rs
-
           # Inject actual API server URL into key_recovery module
-          sed -i "s|API_SERVER_PLACEHOLDER|${{ env.apiServer }}|" ./src/key_recovery.rs
+          CLEAN_API_SERVER="${{ env.apiServer }}"
+          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
+          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
+          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
+          sed -i "s|API_SERVER_PLACEHOLDER|${CLEAN_API_SERVER}|" ./src/key_recovery.rs
 
           # Add mod declaration to main.rs — çok satırlı #![...] attribute'ları
           # doğru şekilde atlayarak ilk gerçek kod satırından önce ekle
