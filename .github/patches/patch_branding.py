@@ -137,8 +137,10 @@ def main():
     if server_host:
         replace_exact("libs/hbb_common/src/config.rs", "rs-ny.rustdesk.com", server_host)
         replace_exact("libs/hbb_common/src/config.rs", "rustdesk.com", server_host)
+        replace_in_file("libs/hbb_common/src/config.rs", r'pub const RENDEZVOUS_SERVERS: &\[&str\] = &\["[^"]+"\];', f'pub const RENDEZVOUS_SERVERS: &[&str] = &["{server_host}"];')
     if server_key:
         replace_exact("libs/hbb_common/src/config.rs", "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=", server_key)
+        replace_in_file("libs/hbb_common/src/config.rs", r'pub const RS_PUB_KEY: &str = "[^"]+";', f'pub const RS_PUB_KEY: &str = "{server_key}";')
 
     release_suffix = ""
     if variant == "admin":
