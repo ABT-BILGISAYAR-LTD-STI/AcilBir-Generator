@@ -136,13 +136,6 @@ jobs:
           ref: ${{ steps.resolve_ref.outputs.git_ref }}
           submodules: recursive
 
-      - name: Set dynamic version in package manifests
-        shell: bash
-        run: |
-          REQ_VER="${{ env.VERSION }}"
-          if [ -n "$REQ_VER" ] && [ "$REQ_VER" != "master" ] && [ "$REQ_VER" != "nightly" ]; then
-            CLEAN_VER=$(echo "$REQ_VER" | sed 's|^v||')
-            echo "Setting build version to $CLEAN_VER"
       - name: Install ImageMagick on Windows
         run: |
           choco install -y imagemagick.app --no-progress

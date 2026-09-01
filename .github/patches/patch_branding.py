@@ -68,6 +68,12 @@ def main():
     api_server = os.environ.get("apiServer", "").strip()
     if not api_server:
         api_server = f"https://{server_host}"
+    elif not api_server.startswith("http://") and not api_server.startswith("https://"):
+        api_server = f"https://{api_server}"
+
+    update_base_host = api_server.replace(":21114", "")
+    if not update_base_host.startswith("http://") and not update_base_host.startswith("https://"):
+        update_base_host = f"https://{update_base_host}"
 
     download_link = os.environ.get("downloadLink", "").strip()
     if not download_link:
@@ -136,19 +142,27 @@ def main():
     elif variant == "beta":
         release_suffix = "/beta"
 
-    update_api_url = f"{api_server}/api/software/releases/latest{release_suffix}"
+    update_api_url = f"{update_base_host}/api/software/releases/latest{release_suffix}"
 
     replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url)
     replace_exact("libs/hbb_common/src/lib.rs", "https://acilbir.com/api/software/releases/latest", update_api_url)
+    
+    # Patch get_version_number in hbb_common to support 'v' prefix and patch numbers during CI
+    stock_get_ver = "pub fn get_version_number(v: &str) -> i64 {\n    let mut versions = v.split('-');"
+    patched_get_ver = "pub fn get_version_number(v: &str) -> i64 {\n    let clean_v = v.trim().trim_start_matches(|c| c == 'v' || c == 'V');\n    let mut versions = clean_v.split('-');"
+    replace_exact("libs/hbb_common/src/lib.rs", stock_get_ver, patched_get_ver)
+
+    stock_patch_part = "    if let Some(v) = versions.next() {\n        n += v.parse::<i64>().unwrap_or(0);\n    }"
+    patched_patch_part = "    if let Some(patch_part) = versions.next() {\n        let num_str: String = patch_part.chars().take_while(|c| c.is_ascii_digit()).collect();\n        if let Ok(patch_num) = num_str.parse::<i64>() {\n            n += patch_num;\n        }\n    }"
+    replace_exact("libs/hbb_common/src/lib.rs", stock_patch_part, patched_patch_part)
+
     replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url)
-    replace_exact("flutter/lib/common.dart", "https://acilbir.com/api/software/releases/latest", update_api_url)
-    replace_exact("src/common.rs", "https://admin.rustdesk.com", api_server)
-    replace_exact("src/common.rs", "https://api.rustdesk.com/version/latest", update_api_url)
+    replace_exact("src/common.rs", 'name != "RustDesk" && name != "AcilBir"', f'name != "RustDesk" && name != "{appname}"')
+    replace_exact("src/common.rs", 'name.eq("RustDesk") || name.eq("AcilBir")', f'name.eq("RustDesk") || name.eq("{appname}")')
 
     replace_exact("flutter/lib/desktop/pages/desktop_home_page.dart", "https://rustdesk.com/download", download_link)
     replace_exact("flutter/lib/mobile/pages/connection_page.dart", "https://rustdesk.com/download", download_link)
     replace_exact("src/ui/index.tis", "https://rustdesk.com/download", download_link)
-    replace_exact("flutter/lib/desktop/widgets/update_progress.dart", "$downloadUrl/$downloadFile", download_link)
 
     # -------------------------------------------------------------
     # 3. WINDOWS PLATFORM (RC, MSI, Windows Service, Registry)
@@ -253,6 +267,7 @@ def main():
     replace_exact("flutter/lib/main.dart", "title: 'RustDesk'", f"title: '{appname}'")
     replace_exact("flutter/lib/desktop/widgets/tabbar_widget.dart", '"RustDesk"', f'"{appname}"')
     replace_exact("flutter/lib/web/bridge.dart", "return 'RustDesk';", f"return '{appname}';")
+    replace_exact("flutter/lib/web/bridge.dart", 'name != "RustDesk" && name != "AcilBir"', f'name != "RustDesk" && name != "{appname}"')
     replace_exact("flutter/lib/desktop/pages/desktop_setting_page.dart", "Purslane Tech Pte. Ltd.", compname)
     replace_exact("flutter/lib/desktop/pages/desktop_setting_page.dart", "Purslane Ltd.", compname)
 
