@@ -161,6 +161,7 @@ def main():
     replace_exact("libs/hbb_common/src/lib.rs", stock_patch_part, patched_patch_part)
 
     replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url)
+    replace_exact("flutter/lib/common.dart", "https://acilbir.com/api/software/releases/latest", update_api_url)
     replace_exact("src/common.rs", 'name != "RustDesk" && name != "AcilBir"', f'name != "RustDesk" && name != "{appname}"')
     replace_exact("src/common.rs", 'name.eq("RustDesk") || name.eq("AcilBir")', f'name.eq("RustDesk") || name.eq("{appname}")')
 
