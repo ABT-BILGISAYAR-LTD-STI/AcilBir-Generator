@@ -692,6 +692,14 @@ jobs:
       #   run: |
       #     cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/
       
+      - name: Create custom.txt file
+        continue-on-error: true
+        if: env.custom != '' && env.custom != null
+        shell: bash
+        run: |
+          echo -n "${{ env.custom }}" | cat > flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Resources/custom_.txt || true
+          echo -n "${{ env.custom }}" | cat > flutter/build/macos/Build/Products/Release/${{ env.appname }}.app/Contents/Resources/custom_.txt || true
+
       - name: Install rcodesign tool
         continue-on-error: true
         if: env.MACOS_P12_BASE64 != null
