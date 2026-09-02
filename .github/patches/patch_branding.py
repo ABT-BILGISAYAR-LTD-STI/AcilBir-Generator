@@ -150,20 +150,35 @@ def main():
 
     update_api_url = f"{update_base_host}/api/software/releases/latest{release_suffix}"
 
-    replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url)
-    replace_exact("libs/hbb_common/src/lib.rs", "https://acilbir.com/api/software/releases/latest", update_api_url)
+    print(f"[patch_branding]   Update API URL:  {update_api_url}")
+    print(f"[patch_branding]   Channel Suffix:  '{release_suffix}' (variant={variant})")
+
+    # --- Rust hbb_common/src/lib.rs: Auto-update URL patching ---
+    # Try stock RustDesk URL first, then AcilBir URL (source may already be patched)
+    if not replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url):
+        # Source already has AcilBir URL — use regex to replace any existing channel variant
+        replace_in_file("libs/hbb_common/src/lib.rs",
+            r'https://[^"]+/api/software/releases/latest(?:/(?:admin|beta))?',
+            update_api_url)
     
-    # Patch get_version_number in hbb_common to support 'v' prefix and patch numbers during CI
+    # Patch get_version_number to support 'v' prefix and patch numbers during CI
+    # Try stock version first (for fresh RustDesk checkout)
     stock_get_ver = "pub fn get_version_number(v: &str) -> i64 {\n    let mut versions = v.split('-');"
     patched_get_ver = "pub fn get_version_number(v: &str) -> i64 {\n    let clean_v = v.trim().trim_start_matches(|c| c == 'v' || c == 'V');\n    let mut versions = clean_v.split('-');"
     replace_exact("libs/hbb_common/src/lib.rs", stock_get_ver, patched_get_ver)
+    # If source already has the patched version, this is a no-op (idempotent)
 
     stock_patch_part = "    if let Some(v) = versions.next() {\n        n += v.parse::<i64>().unwrap_or(0);\n    }"
     patched_patch_part = "    if let Some(patch_part) = versions.next() {\n        let num_str: String = patch_part.chars().take_while(|c| c.is_ascii_digit()).collect();\n        if let Ok(patch_num) = num_str.parse::<i64>() {\n            n += patch_num;\n        }\n    }"
     replace_exact("libs/hbb_common/src/lib.rs", stock_patch_part, patched_patch_part)
 
-    replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url)
-    replace_exact("flutter/lib/common.dart", "https://acilbir.com/api/software/releases/latest", update_api_url)
+    # --- Flutter common.dart: Auto-update URL patching ---
+    # Try stock RustDesk URL first, then AcilBir URL
+    if not replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url):
+        # Source already has AcilBir URL — use regex to replace any existing channel variant
+        replace_in_file("flutter/lib/common.dart",
+            r"https://[^'\"]+/api/software/releases/latest(?:/(?:admin|beta))?",
+            update_api_url)
     replace_exact("src/common.rs", 'name != "RustDesk" && name != "AcilBir"', f'name != "RustDesk" && name != "{appname}"')
     replace_exact("src/common.rs", 'name.eq("RustDesk") || name.eq("AcilBir")', f'name.eq("RustDesk") || name.eq("{appname}")')
 
