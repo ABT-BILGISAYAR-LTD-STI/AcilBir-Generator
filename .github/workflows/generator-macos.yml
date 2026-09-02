@@ -194,17 +194,10 @@ jobs:
           sed -i '' -e "s|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${CLEAN_KEY}|" ./libs/hbb_common/src/config.rs
           sed -i '' -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
 
-          UPDATE_URL="${CLEAN_API_SERVER}/api/software/releases/latest"
           if [ "${{ env.variant }}" = "admin" ]; then
-            UPDATE_URL="${CLEAN_API_SERVER}/api/software/releases/latest/admin"
           elif [ "${{ env.variant }}" = "beta" ]; then
-            UPDATE_URL="${CLEAN_API_SERVER}/api/software/releases/latest/beta"
           fi
 
-          sed -i '' -e "s|https://api.rustdesk.com/version/latest|${UPDATE_URL}|g" ./libs/hbb_common/src/lib.rs 2>/dev/null || true
-          sed -i '' -e "s|https://acilbir.com/api/software/releases/latest|${UPDATE_URL}|g" ./libs/hbb_common/src/lib.rs 2>/dev/null || true
-          sed -i '' -e "s|https://api.rustdesk.com/version/latest|${UPDATE_URL}|g" ./flutter/lib/common.dart 2>/dev/null || true
-          sed -i '' -e "s|https://acilbir.com/api/software/releases/latest|${UPDATE_URL}|g" ./flutter/lib/common.dart 2>/dev/null || true
           
           if [ -f "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" ]; then
             cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
