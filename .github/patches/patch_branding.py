@@ -76,6 +76,7 @@ def main():
     update_base_host = api_server.replace(":21114", "")
     if not update_base_host.startswith("http://") and not update_base_host.startswith("https://"):
         update_base_host = f"https://{update_base_host}"
+    update_base_host = update_base_host.rstrip('/')
 
     download_link = os.environ.get("downloadLink", "").strip()
     if not download_link:
