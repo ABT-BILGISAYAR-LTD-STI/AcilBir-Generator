@@ -551,15 +551,30 @@ def download(request):
 
 
 def get_png(request):
-    filename = os.path.basename(request.GET['filename'])
-    uuid_val = os.path.basename(request.GET['uuid'])
-    file_path = os.path.join('png', uuid_val, filename)
-    with open(file_path, 'rb') as file:
-        response = HttpResponse(file, headers={
-            'Content-Type': 'application/vnd.microsoft.portable-executable',
-            'Content-Disposition': f'attachment; filename="{filename}"'
-        })
+    filename = os.path.basename(request.GET.get('filename', ''))
+    uuid_val = os.path.basename(request.GET.get('uuid', ''))
+    if not filename or not uuid_val:
+        return HttpResponse("Missing parameters", status=400)
 
+    base_dir = getattr(_settings, 'BASE_DIR', Path('.'))
+    candidates = [
+        os.path.join(base_dir, 'png', uuid_val, filename),
+        os.path.join('png', uuid_val, filename),
+    ]
+    target_path = None
+    for p in candidates:
+        if os.path.isfile(p):
+            target_path = p
+            break
+
+    if not target_path:
+        return HttpResponse("File not found or not uploaded yet.", status=404)
+
+    with open(target_path, 'rb') as f:
+        data = f.read()
+
+    response = HttpResponse(data, content_type='image/png')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 
@@ -644,24 +659,49 @@ def startgh(request):
 
 
 def save_png(file, uuid, domain, name):
-    file_save_path = "png/%s/%s" % (uuid, name)
-    Path("png/%s" % uuid).mkdir(parents=True, exist_ok=True)
+    if not file:
+        return "false", "false", "false"
+
+    base_dir = getattr(_settings, 'BASE_DIR', Path('.'))
+    file_dir = os.path.join(base_dir, "png", uuid)
+    os.makedirs(file_dir, exist_ok=True)
+    file_save_path = os.path.join(file_dir, name)
 
     if isinstance(file, str):
+        if not file.strip():
+            return "false", "false", "false"
         try:
-            header, encoded = file.split(';base64,')
+            if ';base64,' in file:
+                header, encoded = file.split(';base64,')
+            else:
+                encoded = file
             decoded_img = base64.b64decode(encoded)
             file = ContentFile(decoded_img, name=name)
-        except ValueError:
-            print("Invalid base64 data")
-            return None
         except Exception as e:
             print(f"Error decoding base64: {e}")
-            return None
-        
-    with open(file_save_path, "wb+") as f:
-        for chunk in file.chunks():
-            f.write(chunk)
+            return "false", "false", "false"
+
+    if hasattr(file, 'chunks'):
+        with open(file_save_path, "wb+") as f:
+            for chunk in file.chunks():
+                f.write(chunk)
+    elif hasattr(file, 'read'):
+        with open(file_save_path, "wb+") as f:
+            f.write(file.read())
+    else:
+        return "false", "false", "false"
+
+    # Also keep relative path copy for backwards compatibility
+    rel_dir = os.path.join("png", uuid)
+    os.makedirs(rel_dir, exist_ok=True)
+    rel_path = os.path.join(rel_dir, name)
+    if os.path.abspath(file_save_path) != os.path.abspath(rel_path):
+        try:
+            import shutil
+            shutil.copy2(file_save_path, rel_path)
+        except Exception:
+            pass
+
     return domain, uuid, name
 
 

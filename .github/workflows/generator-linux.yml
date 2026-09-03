@@ -277,9 +277,6 @@ jobs:
             echo -n "${{ env.custom }}" | cat > ./custom_.txt
             sed -i -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
 
-            if [ "${{ env.variant }}" = "admin" ]; then
-            elif [ "${{ env.variant }}" = "beta" ]; then
-            fi
 
 
       - name: add key recovery module
@@ -722,6 +719,8 @@ jobs:
             cp ./custom_.txt ./flutter/tmpdeb/usr/share/rustdesk/custom_.txt
             if [[ "${{ env.logolink_url }}" != "false" ]]; then
               wget -O ./flutter/assets/logo.png ${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }}
+              cp ./flutter/assets/logo.png ./flutter/assets/logo_dark.png
+              cp ./flutter/assets/logo.png ./flutter/assets/logo_light.png
             fi
             if [[ "${{ env.iconlink_url }}" != "false" ]]; then
               mv ./flutter/assets/icon.svg ./flutter/assets/icon.svg.bak

@@ -213,9 +213,6 @@ jobs:
           sed -i -e "s|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${CLEAN_KEY}|" ./libs/hbb_common/src/config.rs
           sed -i -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
 
-          if [ "${{ env.variant }}" = "admin" ]; then
-          elif [ "${{ env.variant }}" = "beta" ]; then
-          fi
 
 
       - name: add key recovery module
@@ -666,6 +663,8 @@ jobs:
           continue_on_error: true
           command: |
             Invoke-WebRequest -Uri ${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }} -OutFile ./rustdesk/data/flutter_assets/assets/logo.png
+            Copy-Item ./rustdesk/data/flutter_assets/assets/logo.png ./rustdesk/data/flutter_assets/assets/logo_dark.png -Force
+            Copy-Item ./rustdesk/data/flutter_assets/assets/logo.png ./rustdesk/data/flutter_assets/assets/logo_light.png -Force
 
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res

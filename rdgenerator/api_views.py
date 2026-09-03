@@ -1,4 +1,5 @@
 import json
+import base64
 from django.http import JsonResponse
 from django.conf import settings as _settings
 from .views import generate_custom_client, _get_run_status
@@ -237,11 +238,29 @@ def api_profiles_list_create(request):
         )
 
         if 'iconfile' in request.FILES:
-            profile.icon_image = request.FILES['iconfile']
+            f = request.FILES['iconfile']
+            profile.icon_image = f
+            try:
+                profile.iconbase64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+                f.seek(0)
+            except Exception:
+                pass
         if 'logofile' in request.FILES:
-            profile.logo_image = request.FILES['logofile']
+            f = request.FILES['logofile']
+            profile.logo_image = f
+            try:
+                profile.logobase64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+                f.seek(0)
+            except Exception:
+                pass
         if 'privacyfile' in request.FILES:
-            profile.privacy_image = request.FILES['privacyfile']
+            f = request.FILES['privacyfile']
+            profile.privacy_image = f
+            try:
+                profile.privacybase64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+                f.seek(0)
+            except Exception:
+                pass
 
         profile.save()
         return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)}, status=201)
@@ -282,11 +301,29 @@ def api_profile_detail_update_delete(request, profile_id):
             profile.config_data = data['config_data']
 
         if 'iconfile' in request.FILES:
-            profile.icon_image = request.FILES['iconfile']
+            f = request.FILES['iconfile']
+            profile.icon_image = f
+            try:
+                profile.iconbase64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+                f.seek(0)
+            except Exception:
+                pass
         if 'logofile' in request.FILES:
-            profile.logo_image = request.FILES['logofile']
+            f = request.FILES['logofile']
+            profile.logo_image = f
+            try:
+                profile.logobase64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+                f.seek(0)
+            except Exception:
+                pass
         if 'privacyfile' in request.FILES:
-            profile.privacy_image = request.FILES['privacyfile']
+            f = request.FILES['privacyfile']
+            profile.privacy_image = f
+            try:
+                profile.privacybase64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+                f.seek(0)
+            except Exception:
+                pass
 
         profile.save()
         return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)})
@@ -319,6 +356,30 @@ def api_profile_build(request, profile_id):
         except Exception:
             pass
 
+    icon_b64 = profile.iconbase64 or ''
+    if not icon_b64 and profile.icon_image:
+        try:
+            with profile.icon_image.open('rb') as img_f:
+                icon_b64 = 'data:image/png;base64,' + base64.b64encode(img_f.read()).decode('ascii')
+        except Exception:
+            pass
+
+    logo_b64 = profile.logobase64 or ''
+    if not logo_b64 and profile.logo_image:
+        try:
+            with profile.logo_image.open('rb') as img_f:
+                logo_b64 = 'data:image/png;base64,' + base64.b64encode(img_f.read()).decode('ascii')
+        except Exception:
+            pass
+
+    privacy_b64 = profile.privacybase64 or ''
+    if not privacy_b64 and profile.privacy_image:
+        try:
+            with profile.privacy_image.open('rb') as img_f:
+                privacy_b64 = 'data:image/png;base64,' + base64.b64encode(img_f.read()).decode('ascii')
+        except Exception:
+            pass
+
     # Merge profile fields + config_data + overrides
     params = {
         'sh_secret_field': _settings.SH_SECRET,
@@ -334,9 +395,9 @@ def api_profile_build(request, profile_id):
         'apiServer': profile.apiServer or '',
         'urlLink': profile.urlLink or '',
         'downloadLink': profile.downloadLink or '',
-        'iconbase64': profile.iconbase64 or '',
-        'logobase64': profile.logobase64 or '',
-        'privacybase64': profile.privacybase64 or '',
+        'iconbase64': icon_b64,
+        'logobase64': logo_b64,
+        'privacybase64': privacy_b64,
     }
 
     if profile.config_data and isinstance(profile.config_data, dict):

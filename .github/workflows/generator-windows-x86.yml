@@ -188,9 +188,6 @@ jobs:
           sed -i -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
           sed -i -e 's|<span>{translate("Ready")}, <span .link #setup-server>{translate("setup_server_tip")}</span></span>|translate("Ready")|' ./src/ui/index.tis
 
-          if [ "${{ env.variant }}" = "admin" ]; then
-          elif [ "${{ env.variant }}" = "beta" ]; then
-          fi
 
 
       - name: add key recovery module
