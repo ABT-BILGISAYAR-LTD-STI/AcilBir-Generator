@@ -755,7 +755,29 @@ jobs:
           mkdir -p signed-apk; pushd signed-apk
           mv ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk ./${{ env.filename }}-${{ matrix.job.arch }}.apk
           popd
-      
+
+      - name: Detect Android Build Tools
+        if: env.ANDROID_SIGNING_KEY != null
+        shell: bash
+        run: |
+          BT_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools"
+          if [ -d "$BT_DIR" ]; then
+            echo "Installed Android build-tools in $BT_DIR:"
+            ls -1 "$BT_DIR"
+            if [ -d "$BT_DIR/34.0.0" ]; then
+              CHOSEN="34.0.0"
+            else
+              CHOSEN=$(ls -1 "$BT_DIR" | grep -E '^[0-9]' | sort -V | tail -n 1)
+            fi
+            echo "Selected Android build-tools version: $CHOSEN"
+            echo "BUILD_TOOLS_VERSION=$CHOSEN" >> $GITHUB_ENV
+            if [ ! -d "$BT_DIR/30.0.2" ]; then
+              sudo ln -s "$BT_DIR/$CHOSEN" "$BT_DIR/30.0.2" || true
+            fi
+          else
+            echo "BUILD_TOOLS_VERSION=34.0.0" >> $GITHUB_ENV
+          fi
+
       - uses: r0adkll/sign-android-release@v1
         name: Sign app APK
         continue-on-error: true
@@ -768,8 +790,7 @@ jobs:
           keyStorePassword: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
         env:
-          # override default build-tools version (29.0.3) -- optional
-          BUILD_TOOLS_VERSION: "30.0.2"
+          BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOLS_VERSION || '34.0.0' }}
 
       - name: Upload Build Artifacts Backup
         if: always()
