@@ -766,7 +766,8 @@ jobs:
           $myappname = "${{ env.appname }}" -replace '\s','_'
           cp "rustdesk/${{ env.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
           pushd ./res/msi
-          python preprocess.py --app-name "$myappname" --arp -d ../../rustdesk
+          $mfg = if ($env:compname) { $env:compname } elseif ("${{ env.compname }}") { "${{ env.compname }}" } else { "ABT Bilgisayar Programlama ve Tic.Ltd.Sti." }
+          python preprocess.py --app-name "$myappname" --manufacturer "$mfg" --arp -d ../../rustdesk
           nuget restore msi.sln
           msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10 /p:Version=1.0.0
           if (Test-Path ./Package/bin/x64/Release/en-us/Package.msi) {

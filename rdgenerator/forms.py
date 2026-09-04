@@ -34,7 +34,7 @@ class GenerateForm(forms.Form):
         ('settingsY', 'No, enable settings'),
         ('settingsN', 'Yes, DISABLE settings')
     ], initial='settingsY')
-    androidappid = forms.CharField(label="Custom Android App ID (replaces 'com.carriez.flutter_hbb')", required=False)
+    androidappid = forms.CharField(label="Custom Android App ID", required=False, initial="com.acilbir.app", widget=forms.TextInput(attrs={'placeholder': 'com.acilbir.app'}))
 
     #Custom Server
     serverIP = forms.CharField(label="Host", required=False, initial="acilbir.com")
