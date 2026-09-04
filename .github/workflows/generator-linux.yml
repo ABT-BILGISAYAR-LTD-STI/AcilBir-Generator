@@ -1056,16 +1056,12 @@ jobs:
             # In recipe script, ensure bsdtar unpacks whatever .deb file is present
             sed -i "s|bsdtar -zxvf .*deb|bsdtar -zxvf *.deb|g" "$recipe"
             if [ "${{ env.appname }}" != "rustdesk" ]; then
-              CLEAN_APP=$(echo "${{ env.appname }}" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')
               sed -i "s|usr/share/rustdesk/rustdesk|usr/share/${{ env.appname }}/${{ env.appname }}|g" "$recipe"
               sed -i "s|rustdesk.png|${{ env.appname }}.png|g" "$recipe"
               sed -i "s|rustdesk.svg|${{ env.appname }}.svg|g" "$recipe"
               sed -i "s|id: rustdesk|id: ${{ env.appname }}|g" "$recipe"
               sed -i "s|name: rustdesk|name: ${{ env.appname }}|g" "$recipe"
               sed -i "s|icon: rustdesk|icon: ${{ env.appname }}|g" "$recipe"
-              if [ -n "$CLEAN_APP" ] && [ "$CLEAN_APP" != "${{ env.appname }}" ]; then
-                sed -i "/\.DirIcon/a \  - cp ../res/128x128@2x.png ./AppDir/${CLEAN_APP}.png 2>/dev/null || true" "$recipe"
-              fi
             fi
           done
 
