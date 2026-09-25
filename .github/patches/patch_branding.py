@@ -155,12 +155,13 @@ def main():
     print(f"[patch_branding]   Channel Suffix:  '{release_suffix}' (variant={variant})")
 
     # --- Rust hbb_common/src/lib.rs: Auto-update URL patching ---
-    # Try stock RustDesk URL first, then AcilBir URL (source may already be patched)
-    if not replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url):
-        # Source already has AcilBir URL — use regex to replace any existing channel variant
-        replace_in_file("libs/hbb_common/src/lib.rs",
-            r'https://[^"]+/api/software/releases/latest(?:/(?:admin|beta))?',
-            update_api_url)
+    replace_in_file("libs/hbb_common/src/lib.rs",
+        r'https://[^"]+/api/software/releases/latest(?:/(?:admin|beta))+',
+        update_api_url)
+    replace_in_file("libs/hbb_common/src/lib.rs",
+        r'https://[^"]+/api/software/releases/latest',
+        update_api_url)
+    replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url)
     
     # Patch get_version_number to support 'v' prefix and patch numbers during CI
     # Try stock version first (for fresh RustDesk checkout)
@@ -174,12 +175,13 @@ def main():
     replace_exact("libs/hbb_common/src/lib.rs", stock_patch_part, patched_patch_part)
 
     # --- Flutter common.dart: Auto-update URL patching ---
-    # Try stock RustDesk URL first, then AcilBir URL
-    if not replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url):
-        # Source already has AcilBir URL — use regex to replace any existing channel variant
-        replace_in_file("flutter/lib/common.dart",
-            r"https://[^'\"]+/api/software/releases/latest(?:/(?:admin|beta))?",
-            update_api_url)
+    replace_in_file("flutter/lib/common.dart",
+        r"https://[^'\"]+/api/software/releases/latest(?:/(?:admin|beta))+",
+        update_api_url)
+    replace_in_file("flutter/lib/common.dart",
+        r"https://[^'\"]+/api/software/releases/latest",
+        update_api_url)
+    replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url)
     replace_exact("src/common.rs", 'name != "RustDesk" && name != "AcilBir"', f'name != "RustDesk" && name != "{appname}"')
     replace_exact("src/common.rs", 'name.eq("RustDesk") || name.eq("AcilBir")', f'name.eq("RustDesk") || name.eq("{appname}")')
 
