@@ -45,7 +45,7 @@ def main():
     raw_ver = os.environ.get("VERSION", "").strip()
     clean_ver = re.sub(r'^[vV]', '', raw_ver).strip()
     if not clean_ver or clean_ver in ("master", "nightly"):
-        clean_ver = "1.4.10-1"
+        clean_ver = "1.4.15"
 
     appname = os.environ.get("appname", "").strip()
     if not appname:
