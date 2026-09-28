@@ -15,10 +15,14 @@ def extract_token(request):
     """
     Extract JWT token from Authorization header, query parameter, or cookies.
     """
-    # 1. Authorization: Bearer <TOKEN>
+    # 1. Authorization: Bearer <TOKEN> or api-token header
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
     if auth_header.startswith('Bearer '):
         return auth_header.split(' ', 1)[1].strip()
+
+    api_header = request.META.get('HTTP_API_TOKEN') or request.META.get('HTTP_X_API_TOKEN')
+    if api_header:
+        return api_header.strip()
 
     # 2. Cookies (SSO: auth_token, access_token from Vue dashboard; api-token from Go API)
     for cookie_name in ['auth_token', 'access_token', 'api-token', 'token', 'jwt', 'session_token']:

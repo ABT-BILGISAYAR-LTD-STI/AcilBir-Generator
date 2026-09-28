@@ -73,13 +73,14 @@ def validate_generate_params(data):
         else:
             cleaned[field] = value
 
-    # Boolean fields
+    # Boolean fields (support native bool and string representations from web forms/JSON like 'on', 'true', '1')
     for field in BOOL_FIELDS:
         value = data.get(field, False)
-        if not isinstance(value, bool):
-            errors[field] = 'Must be a boolean value.'
-        else:
-            cleaned[field] = value
+        if isinstance(value, str):
+            value = value.lower() in ('true', '1', 'on', 'yes')
+        elif not isinstance(value, bool):
+            value = bool(value)
+        cleaned[field] = value
 
     # Optional string fields
     for field in OPTIONAL_STR_FIELDS:
@@ -126,9 +127,10 @@ def api_generate(request):
     if result['success']:
         # Add convenience URLs for the API consumer
         result['status_url'] = f"/api/status?uuid={result['uuid']}&platform={result['platform']}&filename={result['filename']}"
+        result['code'] = 0
         return JsonResponse(result)
     else:
-        return JsonResponse({"success": False, "error": result['error']}, status=result.get('status_code', 500))
+        return JsonResponse({"code": 1, "success": False, "error": result['error']}, status=result.get('status_code', 500))
 
 
 def api_status(request):
@@ -139,11 +141,11 @@ def api_status(request):
     Returns JSON with status, uuid, and optional log_url/filename/platform.
     """
     if request.method != 'GET':
-        return JsonResponse({"success": False, "error": "Method not allowed. Use GET."}, status=405)
+        return JsonResponse({"code": 1, "success": False, "error": "Method not allowed. Use GET."}, status=405)
 
     uuid_val = request.GET.get('uuid')
     if not uuid_val:
-        return JsonResponse({"error": "Missing required parameter: uuid"}, status=400)
+        return JsonResponse({"code": 1, "error": "Missing required parameter: uuid"}, status=400)
 
     filename = request.GET.get('filename', '')
     platform = request.GET.get('platform', '')
@@ -151,9 +153,11 @@ def api_status(request):
     result = _get_run_status(uuid_val)
 
     if not result['found']:
-        return JsonResponse({"error": "Run not found"}, status=404)
+        return JsonResponse({"code": 1, "error": "Run not found"}, status=404)
 
     response_data = {
+        "code": 0,
+        "success": True,
         "status": result['status'],
         "uuid": uuid_val,
         "log_url": result['github_log_url'],
@@ -204,7 +208,7 @@ def api_profiles_list_create(request):
     """
     if request.method == 'GET':
         profiles = ClientProfile.objects.all().order_by('-updated_at')
-        return JsonResponse({"success": True, "profiles": [profile_to_dict(p, request) for p in profiles]})
+        return JsonResponse({"code": 0, "success": True, "profiles": [profile_to_dict(p, request) for p in profiles]})
 
     elif request.method == 'POST':
         try:
@@ -213,11 +217,11 @@ def api_profiles_list_create(request):
             else:
                 data = request.POST.dict()
         except Exception as e:
-            return JsonResponse({"success": False, "error": f"Invalid payload: {str(e)}"}, status=400)
+            return JsonResponse({"code": 1, "success": False, "error": f"Invalid payload: {str(e)}"}, status=400)
 
         name = data.get('name')
         if not name:
-            return JsonResponse({"success": False, "error": "Profile name is required."}, status=400)
+            return JsonResponse({"code": 1, "success": False, "error": "Profile name is required."}, status=400)
 
         profile = ClientProfile(
             name=name,
@@ -263,9 +267,9 @@ def api_profiles_list_create(request):
                 pass
 
         profile.save()
-        return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)}, status=201)
+        return JsonResponse({"code": 0, "success": True, "profile": profile_to_dict(profile, request)}, status=201)
 
-    return JsonResponse({"error": "Method not allowed"}, status=405)
+    return JsonResponse({"code": 1, "error": "Method not allowed"}, status=405)
 
 
 def api_profile_detail_update_delete(request, profile_id):
@@ -277,10 +281,10 @@ def api_profile_detail_update_delete(request, profile_id):
     try:
         profile = ClientProfile.objects.get(id=profile_id)
     except ClientProfile.DoesNotExist:
-        return JsonResponse({"success": False, "error": "Profile not found"}, status=404)
+        return JsonResponse({"code": 1, "success": False, "error": "Profile not found"}, status=404)
 
     if request.method == 'GET':
-        return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)})
+        return JsonResponse({"code": 0, "success": True, "profile": profile_to_dict(profile, request)})
 
     elif request.method in ['POST', 'PUT']:
         try:
@@ -289,7 +293,7 @@ def api_profile_detail_update_delete(request, profile_id):
             else:
                 data = request.POST.dict()
         except Exception as e:
-            return JsonResponse({"success": False, "error": f"Invalid payload: {str(e)}"}, status=400)
+            return JsonResponse({"code": 1, "success": False, "error": f"Invalid payload: {str(e)}"}, status=400)
 
         for field in ['name', 'variant', 'exename', 'appname', 'compname', 'androidappid',
                       'serverIP', 'key', 'apiServer', 'urlLink', 'downloadLink',
@@ -326,13 +330,13 @@ def api_profile_detail_update_delete(request, profile_id):
                 pass
 
         profile.save()
-        return JsonResponse({"success": True, "profile": profile_to_dict(profile, request)})
+        return JsonResponse({"code": 0, "success": True, "profile": profile_to_dict(profile, request)})
 
     elif request.method == 'DELETE':
         profile.delete()
-        return JsonResponse({"success": True, "message": "Profile deleted"})
+        return JsonResponse({"code": 0, "success": True, "message": "Profile deleted"})
 
-    return JsonResponse({"error": "Method not allowed"}, status=405)
+    return JsonResponse({"code": 1, "error": "Method not allowed"}, status=405)
 
 
 def api_profile_build(request, profile_id):
@@ -407,7 +411,7 @@ def api_profile_build(request, profile_id):
 
     cleaned, errors = validate_generate_params(params)
     if errors:
-        return JsonResponse({"success": False, "error": "Validation errors", "details": errors}, status=400)
+        return JsonResponse({"code": 1, "success": False, "error": "Validation errors", "details": errors}, status=400)
 
     full_url = f"{_settings.PROTOCOL}://{request.get_host()}" if _settings.GENURL else f"{_settings.PROTOCOL}://{request.get_host()}"
 
@@ -417,7 +421,8 @@ def api_profile_build(request, profile_id):
         result['status_url'] = f"/api/status?uuid={result['uuid']}&platform={result['platform']}&filename={result['filename']}"
         result['profile_id'] = profile.id
         result['profile_name'] = profile.name
+        result['code'] = 0
         return JsonResponse(result)
     else:
-        return JsonResponse({"success": False, "error": result['error']}, status=result.get('status_code', 500))
+        return JsonResponse({"code": 1, "success": False, "error": result['error']}, status=result.get('status_code', 500))
 
