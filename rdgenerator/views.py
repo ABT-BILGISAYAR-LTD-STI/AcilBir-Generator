@@ -16,8 +16,21 @@ from django.conf import settings as _settings
 from django.db.models import Q
 from .forms import GenerateForm
 from .models import GithubRun
+from .auth import verify_token
 from PIL import Image
 from urllib.parse import quote
+
+# get_png, download and save_custom_client build file paths from request values;
+# only accept a UUID and a plain file name so "../" or absolute paths cannot escape png/ and exe/.
+_UUID_RE = re.compile(r'^[0-9a-fA-F-]{36}$')
+_NAME_RE = re.compile(r'^[\w.-]+$')
+
+def _safe_parts(uuid_val, filename):
+    if not uuid_val or not _UUID_RE.match(uuid_val):
+        return False
+    if filename is not None and (not _NAME_RE.match(filename) or filename.startswith('.')):
+        return False
+    return True
 
 
 def generate_custom_client(params, full_url):
@@ -35,19 +48,29 @@ def generate_custom_client(params, full_url):
     user_secret = params.get('sh_secret_field', '')
     selfhosted = (_settings.SH_SECRET == user_secret)
     platform = params.get('platform', 'windows')
-    version = params.get('version', '1.4.10-1')
+    version = params.get('version', '1.5.0')
+    app_version = params.get('app_version', '')
     variant = params.get('variant', 'client')
     delayFix = params.get('delayFix', True)
     xOffline = params.get('xOffline', False)
     hidecm = params.get('hidecm', False)
     removeNewVersionNotif = params.get('removeNewVersionNotif', False)
+    update_public_key = params.get('update_public_key', '')
+    # If a custom update public key is provided, force the "remove new version
+    # notification" behaviour off so the client keeps checking for updates via
+    # the self-hosted update URL instead.
+    if update_public_key:
+        removeNewVersionNotif = False
     server = params.get('serverIP', '')
+    serverPort = params.get('serverPort', '')
     key = params.get('key', '')
     apiServer = params.get('apiServer', '')
     urlLink = params.get('urlLink', '')
     downloadLink = params.get('downloadLink', '')
     if not server or server == 'rs-ny.rustdesk.com':
         server = 'acilbir.com'
+    if not serverPort:
+        serverPort = '21116'
     if not key or key == 'OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=':
         key = 'ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE='
     if not apiServer or apiServer.startswith('rs-ny.rustdesk.com'):
@@ -74,9 +97,10 @@ def generate_custom_client(params, full_url):
     direction = params.get('direction', 'both')
     installation = params.get('installation', 'installationY')
     settings = params.get('settings', 'settingsY')
-    appname = params.get('appname', '')
-    if not appname:
-        appname = "AcilBir"
+    appname_display = params.get('appname', '')
+    if not appname_display:
+        appname_display = "AcilBir"
+    appname = re.sub(r"[:|\/]", "", appname_display).replace(" ", "")
     filename = params.get('exename', 'AcilBir')
     compname = params.get('compname', '')
     if not compname:
@@ -158,8 +182,8 @@ def generate_custom_client(params, full_url):
         decodedCustom['disable-installation'] = 'Y'
     if settings == "settingsN":
         decodedCustom['disable-settings'] = 'Y'
-    if appname.upper() != "rustdesk".upper() and appname != "":
-        decodedCustom['app-name'] = appname
+    if appname_display.upper() != "rustdesk".upper() and appname_display != "":
+        decodedCustom['app-name'] = appname_display
     decodedCustom['override-settings'] = {}
     decodedCustom['default-settings'] = {}
     # Enable auto-update by default — required for updater.rs check_update() to run
@@ -179,6 +203,7 @@ def generate_custom_client(params, full_url):
                 decodedCustom['override-settings']['theme'] = theme
     decodedCustom['enable-lan-discovery'] = 'N' if denyLan else 'Y'
     decodedCustom['allow-auto-disconnect'] = 'Y' if autoClose else 'N'
+
     if permissionsDorO == "default":
         decodedCustom['default-settings']['access-mode'] = permissionsType
         decodedCustom['default-settings']['enable-keyboard'] = 'Y' if enableKeyboard else 'N'
@@ -223,6 +248,9 @@ def generate_custom_client(params, full_url):
         decodedCustom['override-settings']['allow-always-relay'] = 'Y'
         decodedCustom['override-settings']['force-always-relay'] = 'N'
         decodedCustom['override-settings']['stop-service'] = 'N'
+        if direction == 'incoming':
+            decodedCustom['override-settings']['custom-rendezvous-server'] = server
+            decodedCustom['override-settings']['api-server'] = apiServer
 
     if defaultManual:
         for line in defaultManual.splitlines():
@@ -262,6 +290,7 @@ def generate_custom_client(params, full_url):
 
     inputs_raw = {
         "server": server,
+        "serverPort": serverPort,
         "key": key,
         "apiServer": apiServer,
         "custom": encodedCustom,
@@ -283,6 +312,7 @@ def generate_custom_client(params, full_url):
         "rdgen": 'true',
         "xOffline": 'true' if xOffline else 'false',
         "removeNewVersionNotif": 'true' if removeNewVersionNotif else 'false',
+        "update_public_key": update_public_key,
         "compname": compname,
         "androidappid": androidappid,
         "filename": filename,
@@ -316,6 +346,7 @@ def generate_custom_client(params, full_url):
         "ref": _settings.GHBRANCH,
         "inputs": {
             "version": version,
+            "app_version": app_version,
             "zip_url": zip_url
         },
         "return_run_details": True
@@ -443,6 +474,42 @@ def generator_view(request):
     return render(request, 'generator.html', {'form': form})
 
 
+def _expected_files_for_platform(filename, platform):
+    """Return the list of expected output filenames for a given platform."""
+    if platform == 'windows':
+        return [f"{filename}.exe", f"{filename}.msi"]
+    elif platform == 'windows-x86':
+        return [f"{filename}.exe"]
+    elif platform == 'linux':
+        return [
+            f"{filename}-x86_64.deb",
+            f"{filename}-unattended-wayland-x86_64.deb",
+            f"{filename}-x86_64.rpm",
+            f"{filename}-suse-x86_64.rpm",
+            f"{filename}-x86_64.pkg.tar.zst",
+            f"{filename}-aarch64.deb",
+            f"{filename}-aarch64.rpm",
+            f"{filename}-suse-aarch64.rpm",
+            f"{filename}-aarch64.pkg.tar.zst",
+            f"{filename}-x86_64.AppImage",
+            f"{filename}-aarch64.AppImage",
+            f"{filename}-x86_64.flatpak",
+            f"{filename}-aarch64.flatpak",
+        ]
+    elif platform == 'android':
+        return [
+            f"{filename}-aarch64.apk",
+            f"{filename}-x86_64.apk",
+            f"{filename}-armv7.apk",
+        ]
+    elif platform == 'macos':
+        return [
+            f"{filename}-x86_64.dmg",
+            f"{filename}-aarch64.dmg",
+        ]
+    return []
+
+
 def check_for_file(request):
     filename = request.GET.get('filename')
     uuid_val = request.GET.get('uuid')
@@ -458,11 +525,24 @@ def check_for_file(request):
     github_log_url = result['github_log_url']
 
     if gh_run.status == "success":
+        expected = _expected_files_for_platform(filename, platform)
+        existing_files = []
+        missing_files = []
+        for f in expected:
+            file_path = os.path.join('exe', uuid, f)
+            if os.path.isfile(file_path):
+                existing_files.append(f)
+            else:
+                missing_files.append(f)
+
         return render(request, 'generated.html', {
-            'filename': filename, 
-            'uuid': uuid_val, 
+            'filename': filename,
+            'uuid': uuid_val,
             'platform': platform,
-            'version': version
+            'version': version,
+            'existing_files': existing_files,
+            'missing_files': missing_files,
+            'github_log_url': github_log_url,
         })
         
     elif gh_run.status in ['failure', 'cancelled', 'timed_out', 'skipped', 'action_required']:
@@ -489,11 +569,13 @@ def check_for_file(request):
 def download(request):
     filename = request.GET.get('filename')
     uuid_val = request.GET.get('uuid')
-    client_version = request.GET.get('version', '1.4.10-1')
+    client_version = request.GET.get('version', '1.5.0')
     
+    if not _safe_parts(uuid_val, filename):
+        return HttpResponseForbidden("Invalid filename")
+
     from django.shortcuts import redirect
     
-    # Try to construct GitHub Release URL
     try:
         gh_user = _settings.GHUSER
         gh_repo = _settings.REPONAME
@@ -504,7 +586,6 @@ def download(request):
         
         for tag_name in tag_candidates:
             github_url = f"https://github.com/{gh_user}/{gh_repo}/releases/download/{tag_name}/{filename}"
-            
             try:
                 head_resp = requests.head(github_url, allow_redirects=True, timeout=10)
                 if head_resp.status_code == 200:
@@ -531,7 +612,6 @@ def download(request):
                             return redirect(asset['browser_download_url'])
             except Exception as e:
                 print(f"Error querying GitHub API for tag {tag_name}: {e}")
-        
     except Exception as e:
         print(f"Error constructing github url: {e}")
 
@@ -551,10 +631,19 @@ def download(request):
 
 
 def get_png(request):
-    filename = os.path.basename(request.GET.get('filename', ''))
-    uuid_val = os.path.basename(request.GET.get('uuid', ''))
-    if not filename or not uuid_val:
-        return HttpResponse("Missing parameters", status=400)
+    filename = request.GET.get('filename', '')
+    uuid_val = request.GET.get('uuid', '')
+    if not _safe_parts(uuid_val, filename):
+        return HttpResponseForbidden("Invalid filename")
+    file_path = os.path.join('png', uuid_val, filename)
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as file:
+            response = HttpResponse(file.read(), headers={
+                'Content-Type': 'image/png',
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            })
+            return response
+    return HttpResponse("File not found", status=404)
 
     base_dir = getattr(_settings, 'BASE_DIR', Path('.'))
     candidates = [
@@ -750,6 +839,8 @@ def save_custom_client(request):
     if 'file' in request.FILES:
         try:
             file = request.FILES['file']
+            if not _safe_parts(myuuid, file.name):
+                return HttpResponseForbidden("Invalid filename")
             file_save_path = f"exe/{myuuid}/{file.name}"
             Path(f"exe/{myuuid}").mkdir(parents=True, exist_ok=True)
             with open(file_save_path, "wb+") as f:

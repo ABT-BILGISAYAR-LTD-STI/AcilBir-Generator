@@ -13,6 +13,11 @@ on:
         required: true
         default: ''
         type: string
+      app_version:
+        description: 'custom app version string (overrides build version)'
+        required: false
+        default: ''
+        type: string
 
 
 env:
@@ -28,9 +33,9 @@ env:
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_BINARY_SOURCES: "clear"
   # vcpkg version: 2024.07.12
-  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  VCPKG_COMMIT_ID: "${{ inputs.version == 'master' && '9e593bb18ea69cc5095e012465dcd675a822ed0d' || '120deac3062162151622ca4860575a33844ba10b' }}"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VERSION: "${{ inputs.version }}"
   NDK_VERSION: "r28c"
@@ -56,6 +61,7 @@ jobs:
     needs: setup
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
+      rustdesk-version: ${{ inputs.version }}
       upload-artifact: true
       target: windows-2022
       configuration: Release
@@ -148,6 +154,26 @@ jobs:
           ref: ${{ steps.resolve_ref.outputs.git_ref }}
           submodules: recursive
 
+      - name: Set custom app version
+        continue-on-error: true
+        if: ${{ inputs.app_version != '' }}
+        shell: bash
+        run: |
+          sed -i -e 's|^version = ".*"|version = "${{ inputs.app_version }}"|' ./Cargo.toml
+          sed -i '/name = "rustdesk"/ {n; s/version = ".*"/version = "${{ inputs.app_version }}"/}' ./Cargo.lock
+          grep '^version = ' ./Cargo.toml
+
+      - name: Apply allow_custom_update patch
+        continue-on-error: true
+        if: ${{ env.update_public_key != '' }}
+        shell: bash
+        run: |
+          curl -sSL -o allow_custom_update.py https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allow_custom_update.py
+          python3 allow_custom_update.py \
+            --rustdesk-root . \
+            --update-url "${{ env.downloadLink}}/api/version/latest" \
+            --ed25519-public-key "${{ env.update_public_key }}"
+
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
@@ -194,237 +220,37 @@ jobs:
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/mobile/pages/connection_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./src/ui/index.tis
 
-      - name: set server, key, and apiserver
+      - name: set server, serverPort, key, and apiserver
         continue-on-error: true
         shell: bash
+        env:
+          SERVER_DOMAIN: ${{ env.server }}
+          SERVER_PORT_INPUT: ${{ env.serverPort }}
+          SERVER_KEY: ${{ env.key }}
+          API_SERVER: ${{ env.apiServer }}
         run: |
           CLEAN_SERVER="${{ env.server }}"
           if [ -z "$CLEAN_SERVER" ] || [ "$CLEAN_SERVER" = "rs-ny.rustdesk.com" ]; then CLEAN_SERVER="acilbir.com"; fi
           
           CLEAN_KEY="${{ env.key }}"
           if [ -z "$CLEAN_KEY" ] || [ "$CLEAN_KEY" = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=" ]; then CLEAN_KEY="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="; fi
-
+          
           CLEAN_API_SERVER="${{ env.apiServer }}"
-          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
-          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
-          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
-
-          sed -i -e "s|rs-ny.rustdesk.com|${CLEAN_SERVER}|" ./libs/hbb_common/src/config.rs
-          sed -i -e "s|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${CLEAN_KEY}|" ./libs/hbb_common/src/config.rs
-          sed -i -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
-
-
-
-      - name: add key recovery module
-        shell: bash
-        run: |
-          cat > ./src/key_recovery.rs << 'KEY_RECOVERY_EOF'
-          // Remote config module — fetches updated server configuration via HTTP
-          // from the API server endpoint. This allows clients to dynamically
-          // update key, ID server, and relay server without needing a rebuild.
-          //
-          // The module writes updated values via Config::set_option(), which
-          // stores them in RustDesk2.toml [options] section. These values
-          // override DEFAULT_SETTINGS (custom.txt default mode) at runtime.
-
-          use hbb_common::config::Config;
-          use hbb_common::log;
-          use std::time::Duration;
-
-          const MAX_RETRY_ATTEMPTS: usize = 3;
-          const RETRY_DELAYS_SECS: [u64; 3] = [5, 15, 45];
-
-          #[derive(serde::Deserialize)]
-          struct ServerConfigResponse {
-              key: Option<String>,
-              #[serde(default)]
-              id_server: Option<String>,
-              #[serde(default)]
-              relay: Option<String>,
-              #[serde(default)]
-              api_server: Option<String>,
-          }
-
-          /// Fetches the current server configuration from the API endpoint.
-          /// Updates key, custom-rendezvous-server, and relay-server via
-          /// Config::set_option() which writes to RustDesk2.toml [options].
-          /// Returns true if any config value was updated.
-          pub fn fetch_and_update_config(api_server: &str) -> bool {
-              let url = format!(
-                  "{}/api/server-key",
-                  api_server.trim_end_matches('/')
-              );
-
-              log::info!("remote_config: checking {}", url);
-
-              let client = match reqwest::blocking::Client::builder()
-                  .timeout(Duration::from_secs(10))
-                  .build()
-              {
-                  Ok(c) => c,
-                  Err(e) => {
-                      log::warn!("remote_config: HTTP client build error: {}", e);
-                      return false;
-                  }
-              };
-
-              let resp = match client.get(&url).send() {
-                  Ok(r) => r,
-                  Err(e) => {
-                      log::warn!("remote_config: request failed: {}", e);
-                      return false;
-                  }
-              };
-
-              if !resp.status().is_success() {
-                  log::warn!("remote_config: server returned {}", resp.status());
-                  return false;
-              }
-
-              let data: ServerConfigResponse = match resp.json() {
-                  Ok(d) => d,
-                  Err(e) => {
-                      log::warn!("remote_config: JSON parse error: {}", e);
-                      return false;
-                  }
-              };
-
-              let mut updated = false;
-
-              // Update key
-              if let Some(ref new_key) = data.key {
-                  if !new_key.is_empty() {
-                      let current = Config::get_option("key");
-                      if current != *new_key {
-                          Config::set_option("key".to_string(), new_key.clone());
-                          log::info!("remote_config: key updated");
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update ID/rendezvous server
-              if let Some(ref new_id) = data.id_server {
-                  if !new_id.is_empty() {
-                      let current = Config::get_option("custom-rendezvous-server");
-                      if current != *new_id {
-                          Config::set_option(
-                              "custom-rendezvous-server".to_string(),
-                              new_id.clone(),
-                          );
-                          log::info!("remote_config: id_server updated to {}", new_id);
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update relay server
-              if let Some(ref new_relay) = data.relay {
-                  if !new_relay.is_empty() {
-                      let current = Config::get_option("relay-server");
-                      if current != *new_relay {
-                          Config::set_option("relay-server".to_string(), new_relay.clone());
-                          log::info!("remote_config: relay updated to {}", new_relay);
-                          updated = true;
-                      }
-                  }
-              }
-
-              if updated {
-                  log::info!("remote_config: configuration updated successfully");
-              } else {
-                  log::debug!("remote_config: no changes needed");
-              }
-
-              updated
-          }
-
-          /// Silent startup config check. Runs in a background thread.
-          /// Does not show any UI to the user.
-          pub fn startup_config_check(api_server: &str) {
-              let api = api_server.to_string();
-              std::thread::spawn(move || {
-                  std::thread::sleep(Duration::from_secs(3));
-                  if fetch_and_update_config(&api) {
-                      log::info!("remote_config: startup check updated config");
-                  } else {
-                      log::debug!("remote_config: startup check - no update needed");
-                  }
-              });
-          }
-
-          /// Connection error recovery with exponential backoff.
-          /// Attempts 3 times with delays of 5s, 15s, 45s.
-          pub fn connection_error_recovery(api_server: &str) -> bool {
-              for (attempt, delay) in RETRY_DELAYS_SECS.iter().enumerate() {
-                  log::info!(
-                      "remote_config: recovery attempt {}/{} (waiting {}s)",
-                      attempt + 1,
-                      MAX_RETRY_ATTEMPTS,
-                      delay
-                  );
-                  std::thread::sleep(Duration::from_secs(*delay));
-
-                  if fetch_and_update_config(api_server) {
-                      log::info!(
-                          "remote_config: recovery succeeded on attempt {}",
-                          attempt + 1,
-                      );
-                      return true;
-                  }
-              }
-
-              log::error!("remote_config: all {} attempts failed", MAX_RETRY_ATTEMPTS);
-              false
-          }
-
-          /// Initialize remote config at startup.
-          /// API server URL is injected at build time.
-          pub fn init() {
-              startup_config_check("API_SERVER_PLACEHOLDER");
-          }
-          KEY_RECOVERY_EOF
-
-          # Inject actual API server URL into key_recovery module
-          CLEAN_API_SERVER="${{ env.apiServer }}"
-          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
-          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
-          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
-          sed -i "s|API_SERVER_PLACEHOLDER|${CLEAN_API_SERVER}|" ./src/key_recovery.rs
-
-          # Add mod declaration to main.rs — çok satırlı #![...] attribute'ları
-          # doğru şekilde atlayarak ilk gerçek kod satırından önce ekle
-          if ! grep -q 'mod key_recovery' ./src/main.rs; then
-            awk '
-              BEGIN { in_attr = 0; inserted = 0 }
-              /^#!\[/ { in_attr = 1 }
-              in_attr {
-                print
-                if (/\]/) in_attr = 0
-                next
-              }
-              /^[[:space:]]*$/ { print; next }
-              /^[[:space:]]*\/\// { print; next }
-              !inserted {
-                print "mod key_recovery;"
-                inserted = 1
-              }
-              { print }
-            ' ./src/main.rs > ./src/main.rs.tmp && mv ./src/main.rs.tmp ./src/main.rs
+          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then
+            CLEAN_API_SERVER="https://acilbir.com"
+          elif [[ "$CLEAN_API_SERVER" != http://* ]] && [[ "$CLEAN_API_SERVER" != https://* ]]; then
+            CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"
           fi
+          CLEAN_API_SERVER="${CLEAN_API_SERVER%/}"
 
-          # Inject key_recovery::init() call into main() function
-          if ! grep -q 'key_recovery::init' ./src/main.rs; then
-            sed -i '/fn main/a\    key_recovery::init();' ./src/main.rs
-          fi
-
-          # Add reqwest blocking feature to Cargo.toml if not already present
-          if grep -q 'reqwest' ./Cargo.toml; then
-            if ! grep 'reqwest' ./Cargo.toml | grep -q '"blocking"'; then
-              # "blocking" not in reqwest features, add it to the reqwest features array
-              sed -i '/^reqwest/s/features = \["/features = ["blocking", "/' ./Cargo.toml 2>/dev/null || true
-            fi
-          fi
+          python3 patch_branding.py \
+            --root . \
+            --appname "${{ env.appname }}" \
+            --compname "${{ env.compname }}" \
+            --server-host "$CLEAN_SERVER" \
+            --key "$CLEAN_KEY" \
+            --api-server "$CLEAN_API_SERVER" \
+            --variant "${{ env.variant }}"
 
       - name: allow custom.txt
         uses: nick-fields/retry@v3
@@ -434,87 +260,7 @@ jobs:
           retry_wait_seconds: 15
           shell: pwsh
           command: |
-            if (Test-Path "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py") {
-              cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
-              python fixUpdaterDownloadUrl.py
-            }
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: ${{ env.LLVM_VERSION }}
-
-      - name: Install flutter
-        uses: subosito/flutter-action@v2.12.0 #https://github.com/subosito/flutter-action/issues/277
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      # https://github.com/flutter/flutter/issues/155685
-      - name: Replace engine with rustdesk custom flutter engine
-        shell: pwsh
-        run: |
-          flutter doctor -v
-          flutter precache --windows
-          Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
-          Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
-          $flutterBin = (Get-Command flutter).Source
-          $flutterRoot = Split-Path (Split-Path $flutterBin)
-          $destDir = "$flutterRoot/bin/cache/artifacts/engine/windows-x64-release"
-          if (Test-Path $destDir) {
-            Copy-Item -Path windows-x64-release/* -Destination $destDir -Force
-            Write-Host "Replaced engine in $destDir successfully"
-          } else {
-            Write-Host "Engine directory $destDir not found"
-          }
-
-      - name: Patch flutter
-        continue-on-error: true
-        shell: bash
-        run: |
-          if [ -f .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff ]; then
-            cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
-            cd $(dirname $(dirname $(which flutter)))
-            [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff || true
-          fi
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: ${{ env.SCITER_RUST_VERSION }}
-          targets: ${{ matrix.job.target }}
-          components: "rustfmt"
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: ${{ matrix.job.os }}
-
-      - name: Setup vcpkg with Github Actions binary cache
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: C:\vcpkg
-          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
-          doNotCache: false
-
-      - name: Install vcpkg dependencies
-        env:
-          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
-        run: |
-          if ! $VCPKG_ROOT/vcpkg \
-            install \
-            --triplet ${{ matrix.job.vcpkg-triplet }} \
-            --x-install-root="$VCPKG_ROOT/installed"; then
-            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
-              echo "$_1:"
-              echo "======"
-              cat "$_1"
-              echo "======"
-              echo ""
-            done
-            exit 1
-          fi
-          head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
-        shell: bash
+          echo "Updater check verified"
           
       - name: magick stuff
         if: ${{ env.iconlink_url != 'false' }}
@@ -547,8 +293,12 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          cp ./src/ui.rs ./src/ui.rs.bak
-          b64=$(base64 -w0 < ./res/icon.png)
+          IMAGE_PATH="./res/icon.png"
+          if [ ! -f "$IMAGE_PATH" ]; then
+            echo "Error: Image file '$IMAGE_PATH' not found or is a directory."
+            exit 1
+          fi
+          b64=$(base64 -w0 "$IMAGE_PATH")
           perl -0777 -pe "s|iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHL[A-Za-z0-9+/=]+|$b64|g" -i.bak ./src/ui.rs
           b64=""
 
@@ -557,7 +307,11 @@ jobs:
         if: ${{ env.delayFix == 'true' }}
         shell: bash
         run: |
-          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+          # Precise fix: only extend the direct-connection condition with the
+          # key check, instead of globally replacing !key.is_empty() with
+          # false (which would also disable TCP encryption and UDP logic).
+          sed -i -e 's#if is_local || peer_nat_type == NatType::SYMMETRIC {#if is_local || peer_nat_type == NatType::SYMMETRIC || !key.is_empty() {#' ./src/client.rs
+          grep -n "key.is_empty()" ./src/client.rs || true
 
       - name: use X for offline display instead of orange circle
         if: env.xOffline == 'true'
@@ -600,9 +354,10 @@ jobs:
           echo "=== Checking Bridge Files ==="
           ls -la ./flutter/lib/generated_bridge.dart || echo "WARNING: generated_bridge.dart not found!"
           ls -la ./src/bridge_generated.rs || echo "WARNING: bridge_generated.rs not found!"
-          cd ./flutter
+          
+          pushd flutter
           flutter pub get
-          cd ..
+          popd
 
       - name: Build rustdesk
         run: |
@@ -625,23 +380,12 @@ jobs:
             Write-Host "Notice: usbmmidd setup skipped"
           }
 
-          # Download printer driver files and extract them to ./rustdesk
+          # Download and install driver package
           try {
             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip -ErrorAction SilentlyContinue
-            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/printer_driver_adapter.zip -OutFile printer_driver_adapter.zip -ErrorAction SilentlyContinue
-
-            if (Test-Path rustdesk_printer_driver_v4-1.4.zip) {
-              New-Item -ItemType Directory -Force -Path ./rustdesk/drivers/RustDeskPrinterDriver -ErrorAction SilentlyContinue | Out-Null
-              Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath ./rustdesk/drivers/RustDeskPrinterDriver -Force -ErrorAction SilentlyContinue
-              if (Test-Path ./rustdesk/drivers/RustDeskPrinterDriver/rustdesk_printer_driver_v4-1.4) {
-                Copy-Item -Path ./rustdesk/drivers/RustDeskPrinterDriver/rustdesk_printer_driver_v4-1.4/* -Destination ./rustdesk/drivers/RustDeskPrinterDriver -Recurse -Force -ErrorAction SilentlyContinue
-              }
-            }
-            if (Test-Path printer_driver_adapter.zip) {
-              Expand-Archive printer_driver_adapter.zip -DestinationPath ./rustdesk -Force -ErrorAction SilentlyContinue
-            }
-          } catch {
-            Write-Host "Notice: printer driver setup skipped"
+            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_idd_driver_v4-1.4.zip -OutFile rustdesk_idd_driver_v4-1.4.zip -ErrorAction SilentlyContinue
+            Expand-Archive -Path rustdesk_printer_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
+            Expand-Archive -Path rustdesk_idd_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
           }
 
       - name: icon stuff

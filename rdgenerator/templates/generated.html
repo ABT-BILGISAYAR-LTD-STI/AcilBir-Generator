@@ -126,7 +126,11 @@
     <div>
         <h2 class="success-text">Build Generated Successfully</h2>
         <div class="download-section">
-            {% if platform == 'windows' %}
+            {% if existing_files %}
+                {% for f in existing_files %}
+                    <a href='/download?filename={{ f }}&uuid={{ uuid }}&version={{ version }}' class="download-link">Download {{ f }}</a>
+                {% endfor %}
+            {% elif platform == 'windows' %}
                 <a href='/download?filename={{filename}}.exe&uuid={{uuid}}&version={{version}}' class="download-link">Download {{filename}}.exe</a>
                 <a href='/download?filename={{filename}}.msi&uuid={{uuid}}&version={{version}}' class="download-link">Download {{filename}}.msi</a>
             {% elif platform == 'windows-x86' %}
@@ -152,9 +156,22 @@
                 <a href='/download?filename={{filename}}-x86_64.dmg&uuid={{uuid}}&version={{version}}' class="download-link">Download {{filename}}-x86_64.dmg</a>
                 <a href='/download?filename={{filename}}-aarch64.dmg&uuid={{uuid}}&version={{version}}' class="download-link">Download {{filename}}-aarch64.dmg</a>
             {% else %}
-                <p>Error: No file generated</p>
+                <p>No files available for download.</p>
             {% endif %}
         </div>
+
+        {% if missing_files %}
+        <div class="failed-section">
+            <h3 style="color: #d32f2f; margin-top: 20px;">Failed Builds</h3>
+            <p>The following files were not generated (the build for these may have failed):</p>
+            <ul style="text-align: left; display: inline-block; margin: 0 auto;">
+                {% for f in missing_files %}
+                    <li style="color: #d32f2f;">{{ f }}</li>
+                {% endfor %}
+            </ul>
+            <p>View full build log: <a href="{{ github_log_url }}" target="_blank" style="color: #3498db;">GitHub Actions Run</a></p>
+        </div>
+        {% endif %}
     </div>
 
     <div id="platformNote" class="platform-note"></div>

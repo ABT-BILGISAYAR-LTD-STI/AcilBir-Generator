@@ -13,6 +13,11 @@ on:
         required: true
         default: ''
         type: string
+      app_version:
+        description: 'custom app version string (overrides build version)'
+        required: false
+        default: ''
+        type: string
 
 
 env:
@@ -28,9 +33,9 @@ env:
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_BINARY_SOURCES: "clear"
   # vcpkg version: 2024.07.12
-  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VERSION: "${{ inputs.version }}"
   NDK_VERSION: "r28c"
@@ -199,6 +204,35 @@ jobs:
           ref: ${{ steps.resolve_ref.outputs.git_ref }}
           submodules: recursive
 
+      - name: Set custom app version
+        continue-on-error: true
+        if: ${{ inputs.app_version != '' }}
+        shell: bash
+        run: |
+          sed -i -e 's|^version = ".*"|version = "${{ inputs.app_version }}"|' ./Cargo.toml
+          sed -i '/name = "rustdesk"/ {n; s/version = ".*"/version = "${{ inputs.app_version }}"/}' ./Cargo.lock
+          grep '^version = ' ./Cargo.toml
+
+      - name: Apply allow_custom_update patch
+        continue-on-error: true
+        if: ${{ env.update_public_key != '' }}
+        shell: bash
+        run: |
+          curl -sSL -o allow_custom_update.py https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allow_custom_update.py
+          python3 allow_custom_update.py \
+            --rustdesk-root . \
+            --update-url "${{ env.downloadLink}}/api/version/latest" \
+            --ed25519-public-key "${{ env.update_public_key }}"
+
+      - name: Patch Android Manifest and Gradle for AGP 8+
+        run: |
+          MANIFEST_PATH="flutter/android/app/src/main/AndroidManifest.xml"
+          BUILD_GRADLE_PATH="flutter/android/app/build.gradle"
+          sed -i 's/package="com.carriez.flutter_hbb"//g' "$MANIFEST_PATH"
+          if ! grep -q "namespace" "$BUILD_GRADLE_PATH"; then
+            sed -i '/android {/a \    namespace "com.carriez.flutter_hbb"' "$BUILD_GRADLE_PATH"
+          fi
+
       - name: Apply Android branding and dynamic versioning
         shell: bash
         run: |
@@ -223,7 +257,15 @@ jobs:
           ndk-version: ${{ env.NDK_VERSION }}
           add-to-path: true
 
-      - name: Setup vcpkg with Github Actions binary cache
+      - name: Restore vcpkg installed cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/artifacts/vcpkg/installed
+          key: vcpkg-android-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.target }}
+          restore-keys: |
+            vcpkg-android-${{ env.VCPKG_COMMIT_ID }}-
+
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: /opt/artifacts/vcpkg
@@ -258,6 +300,13 @@ jobs:
           fi
         shell: bash
 
+      - name: Save vcpkg installed cache
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: /opt/artifacts/vcpkg/installed
+          key: vcpkg-android-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.target }}
+        
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
@@ -325,12 +374,43 @@ jobs:
             cp ./flutter/assets/logo.png ./flutter/assets/logo_dark.png
             cp ./flutter/assets/logo.png ./flutter/assets/logo_light.png
 
-      - name: set server, key, and apiserver
+      - name: set server, serverPort, key, and apiserver
         continue-on-error: true
         shell: bash
+        env:
+          SERVER_DOMAIN: ${{ env.server }}
+          SERVER_PORT_INPUT: ${{ env.serverPort }}
+          SERVER_KEY: ${{ env.key }}
+          API_SERVER: ${{ env.apiServer }}
         run: |
           CLEAN_SERVER="${{ env.server }}"
           if [ -z "$CLEAN_SERVER" ] || [ "$CLEAN_SERVER" = "rs-ny.rustdesk.com" ]; then CLEAN_SERVER="acilbir.com"; fi
+          
+          CLEAN_KEY="${{ env.key }}"
+          if [ -z "$CLEAN_KEY" ] || [ "$CLEAN_KEY" = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=" ]; then CLEAN_KEY="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="; fi
+          
+          CLEAN_API_SERVER="${{ env.apiServer }}"
+          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then
+            CLEAN_API_SERVER="https://acilbir.com"
+          elif [[ "$CLEAN_API_SERVER" != http://* ]] && [[ "$CLEAN_API_SERVER" != https://* ]]; then
+            CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"
+          fi
+          CLEAN_API_SERVER="${CLEAN_API_SERVER%/}"
+
+          CLEAN_URL_LINK="${{ env.urlLink }}"
+          if [ -z "$CLEAN_URL_LINK" ]; then CLEAN_URL_LINK="https://acilbir.com"; fi
+
+          CLEAN_COMPNAME="${{ env.compname }}"
+          if [ -z "$CLEAN_COMPNAME" ]; then CLEAN_COMPNAME="ABT Bilgisayar Programlama ve Tic.Ltd.Sti."; fi
+
+          python3 patch_branding.py \
+            --root . \
+            --appname "${{ env.appname }}" \
+            --compname "$CLEAN_COMPNAME" \
+            --server-host "$CLEAN_SERVER" \
+            --key "$CLEAN_KEY" \
+            --api-server "$CLEAN_API_SERVER" \
+            --variant "${{ env.variant }}"
           
           CLEAN_KEY="${{ env.key }}"
           if [ -z "$CLEAN_KEY" ] || [ "$CLEAN_KEY" = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=" ]; then CLEAN_KEY="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="; fi
@@ -362,204 +442,25 @@ jobs:
           use hbb_common::log;
           use std::time::Duration;
 
-          const MAX_RETRY_ATTEMPTS: usize = 3;
-          const RETRY_DELAYS_SECS: [u64; 3] = [5, 15, 45];
-
-          #[derive(serde::Deserialize)]
-          struct ServerConfigResponse {
-              key: Option<String>,
-              #[serde(default)]
-              id_server: Option<String>,
-              #[serde(default)]
-              relay: Option<String>,
-              #[serde(default)]
-              api_server: Option<String>,
-          }
-
-          /// Fetches the current server configuration from the API endpoint.
-          /// Updates key, custom-rendezvous-server, and relay-server via
-          /// Config::set_option() which writes to RustDesk2.toml [options].
-          /// Returns true if any config value was updated.
-          pub fn fetch_and_update_config(api_server: &str) -> bool {
-              let url = format!(
-                  "{}/api/server-key",
-                  api_server.trim_end_matches('/')
-              );
-
-              log::info!("remote_config: checking {}", url);
-
-              let client = match reqwest::blocking::Client::builder()
-                  .timeout(Duration::from_secs(10))
-                  .build()
-              {
-                  Ok(c) => c,
-                  Err(e) => {
-                      log::warn!("remote_config: HTTP client build error: {}", e);
-                      return false;
-                  }
-              };
-
-              let resp = match client.get(&url).send() {
-                  Ok(r) => r,
-                  Err(e) => {
-                      log::warn!("remote_config: request failed: {}", e);
-                      return false;
-                  }
-              };
-
-              if !resp.status().is_success() {
-                  log::warn!("remote_config: server returned {}", resp.status());
-                  return false;
-              }
-
-              let data: ServerConfigResponse = match resp.json() {
-                  Ok(d) => d,
-                  Err(e) => {
-                      log::warn!("remote_config: JSON parse error: {}", e);
-                      return false;
-                  }
-              };
-
-              let mut updated = false;
-
-              // Update key
-              if let Some(ref new_key) = data.key {
-                  if !new_key.is_empty() {
-                      let current = Config::get_option("key");
-                      if current != *new_key {
-                          Config::set_option("key".to_string(), new_key.clone());
-                          log::info!("remote_config: key updated");
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update ID/rendezvous server
-              if let Some(ref new_id) = data.id_server {
-                  if !new_id.is_empty() {
-                      let current = Config::get_option("custom-rendezvous-server");
-                      if current != *new_id {
-                          Config::set_option(
-                              "custom-rendezvous-server".to_string(),
-                              new_id.clone(),
-                          );
-                          log::info!("remote_config: id_server updated to {}", new_id);
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update relay server
-              if let Some(ref new_relay) = data.relay {
-                  if !new_relay.is_empty() {
-                      let current = Config::get_option("relay-server");
-                      if current != *new_relay {
-                          Config::set_option("relay-server".to_string(), new_relay.clone());
-                          log::info!("remote_config: relay updated to {}", new_relay);
-                          updated = true;
-                      }
-                  }
-              }
-
-              if updated {
-                  log::info!("remote_config: configuration updated successfully");
-              } else {
-                  log::debug!("remote_config: no changes needed");
-              }
-
-              updated
-          }
-
-          /// Silent startup config check. Runs in a background thread.
-          /// Does not show any UI to the user.
-          pub fn startup_config_check(api_server: &str) {
-              let api = api_server.to_string();
-              std::thread::spawn(move || {
-                  std::thread::sleep(Duration::from_secs(3));
-                  if fetch_and_update_config(&api) {
-                      log::info!("remote_config: startup check updated config");
-                  } else {
-                      log::debug!("remote_config: startup check - no update needed");
-                  }
-              });
-          }
-
-          /// Connection error recovery with exponential backoff.
-          /// Attempts 3 times with delays of 5s, 15s, 45s.
-          pub fn connection_error_recovery(api_server: &str) -> bool {
-              for (attempt, delay) in RETRY_DELAYS_SECS.iter().enumerate() {
-                  log::info!(
-                      "remote_config: recovery attempt {}/{} (waiting {}s)",
-                      attempt + 1,
-                      MAX_RETRY_ATTEMPTS,
-                      delay
-                  );
-                  std::thread::sleep(Duration::from_secs(*delay));
-
-                  if fetch_and_update_config(api_server) {
-                      log::info!(
-                          "remote_config: recovery succeeded on attempt {}",
-                          attempt + 1,
-                      );
-                      return true;
-                  }
-              }
-
-              log::error!("remote_config: all {} attempts failed", MAX_RETRY_ATTEMPTS);
-              false
-          }
-
-          /// Initialize remote config at startup.
-          /// API server URL is injected at build time.
-          pub fn init() {
-              startup_config_check("API_SERVER_PLACEHOLDER");
-          }
-          KEY_RECOVERY_EOF
-
-          # Inject actual API server URL into key_recovery module
-          CLEAN_API_SERVER="${{ env.apiServer }}"
-          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
-          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
-          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
-          sed -i "s|API_SERVER_PLACEHOLDER|${CLEAN_API_SERVER}|" ./src/key_recovery.rs
-
-          # Add mod declaration to main.rs — çok satırlı #![...] attribute'ları
-          # doğru şekilde atlayarak ilk gerçek kod satırından önce ekle
-          if ! grep -q 'mod key_recovery' ./src/main.rs; then
-            awk '
-              BEGIN { in_attr = 0; inserted = 0 }
-              /^#!\[/ { in_attr = 1 }
-              in_attr {
-                print
-                if (/\]/) in_attr = 0
-                next
-              }
-              /^[[:space:]]*$/ { print; next }
-              /^[[:space:]]*\/\// { print; next }
-              !inserted {
-                print "mod key_recovery;"
-                inserted = 1
-              }
-              { print }
-            ' ./src/main.rs > ./src/main.rs.tmp && mv ./src/main.rs.tmp ./src/main.rs
-          fi
-
-          # Inject key_recovery::init() call into main() function
-          if ! grep -q 'key_recovery::init' ./src/main.rs; then
-            sed -i '/fn main/a\    key_recovery::init();' ./src/main.rs
-          fi
-
-          # Add reqwest blocking feature to Cargo.toml if not already present
-          if grep -q 'reqwest' ./Cargo.toml; then
-            if ! grep 'reqwest' ./Cargo.toml | grep -q '"blocking"'; then
-              # "blocking" not in reqwest features, add it to the reqwest features array
-              sed -i '/^reqwest/s/features = \["/features = ["blocking", "/' ./Cargo.toml 2>/dev/null || true
-            fi
-          fi
-
-
+      - name: Embed custom config for Android
+        shell: bash
+        run: |
+          KOTLIN=./flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+          DART=./flutter/lib/models/native_model.dart
+          sed -i -E "s|FFI\.startServer\(configPath, (homePath, )?\"\"\)|FFI.startServer(configPath, \1\"${{ env.custom }}\")|" "$KOTLIN" || true
+          sed -i "s|customClientConfig: '',|customClientConfig: '${{ env.custom }}',|" "$DART" || true
 
       - name: override download link for Android platform
+        shell: bash
+        run: |
+          if [ "${{ env.variant }}" = "admin" ]; then
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/admin-Android"
+          elif [ "${{ env.variant }}" = "beta" ]; then
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/beta-Android"
+          else
+            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Android"
+          fi
+          echo "downloadLink=${DOWNLOAD_URL}" >> $GITHUB_ENV
         shell: bash
         run: |
           # Platform-specific downloadLink override — ensures client updater
@@ -599,7 +500,11 @@ jobs:
         if: ${{ env.delayFix == 'true' }}
         shell: bash
         run: |
-          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+          # Precise fix: only extend the direct-connection condition with the
+          # key check, instead of globally replacing !key.is_empty() with
+          # false (which would also disable TCP encryption and UDP logic).
+          sed -i -e 's#if is_local || peer_nat_type == NatType::SYMMETRIC {#if is_local || peer_nat_type == NatType::SYMMETRIC || !key.is_empty() {#' ./src/client.rs
+          grep -n "key.is_empty()" ./src/client.rs || true
 
       - name: use X for offline display instead of orange circle
         if: env.xOffline == 'true'
@@ -792,8 +697,98 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOLS_VERSION || '34.0.0' }}
 
+      - name: Prefer signed APK when available
+        shell: bash
+        run: |
+          plain="./signed-apk/${{ env.filename }}-${{ matrix.job.arch }}.apk"
+          signed="./signed-apk/${{ env.filename }}-${{ matrix.job.arch }}-signed.apk"
+          if [ -f "$signed" ]; then
+            mv "$signed" "$plain"
+            echo "Using release-signed APK: $plain"
+          fi
+          ls -l ./signed-apk/
+
       - name: Upload Build Artifacts Backup
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-${{ env.uuid }}-${{ matrix.job.arch }}
+          path: ./signed-apk/*
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Create GitHub Release and Upload Artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG_NAME="v${{ env.VERSION }}"
+          if [ -z "${{ env.VERSION }}" ] || [ "${{ env.VERSION }}" = "master" ] || [ "${{ env.VERSION }}" = "nightly" ]; then
+            TAG_NAME="v1.5.0-${{ env.uuid }}"
+          fi
+
+          TITLE="AcilBir ${{ env.VERSION }}"
+          if [ "${{ env.variant }}" = "admin" ]; then
+            TITLE="AcilBir (Admin) ${{ env.VERSION }}"
+          elif [ "${{ env.variant }}" = "beta" ]; then
+            TITLE="AcilBir (Beta) ${{ env.VERSION }}"
+          fi
+
+          echo "Ensuring release exists for tag $TAG_NAME..."
+          gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "$TAG_NAME" \
+              --repo "${{ github.repository }}" \
+              --title "$TITLE" \
+              --notes "Automated build for AcilBir ${{ env.VERSION }} (${{ env.variant }})" \
+              --prerelease=false || true
+
+          for file in ./signed-apk/*.apk; do
+            [ -f "$file" ] || continue
+            BASENAME=$(basename "$file")
+            echo "Uploading $BASENAME to GitHub Release $TAG_NAME..."
+            gh release upload "$TAG_NAME" "$file" --repo "${{ github.repository }}" --clobber || true
+
+            RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$BASENAME"
+            AUTH_TOKEN="${{ env.token }}"
+            [ -z "$AUTH_TOKEN" ] && AUTH_TOKEN="${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}"
+
+            API_SERVER="${{ env.apiServer }}"
+            if [ -n "$API_SERVER" ]; then
+              URL_CANDIDATES=()
+              if [[ "$API_SERVER" == http://* ]] || [[ "$API_SERVER" == https://* ]]; then
+                URL_CANDIDATES+=("${API_SERVER%/}/api/save_custom_client")
+              else
+                URL_CANDIDATES+=("https://$API_SERVER/api/save_custom_client")
+                URL_CANDIDATES+=("http://$API_SERVER/api/save_custom_client")
+              fi
+
+              for TARGET_URL in "${URL_CANDIDATES[@]}"; do
+                HTTP_CODE=$(curl -k -s -L --post301 --post302 --post303 -o /dev/null -w "%{http_code}" \
+                  --connect-timeout 10 --max-time 20 -X POST \
+                  -H "Authorization: Bearer $AUTH_TOKEN" \
+                  -H "Content-Type: application/x-www-form-urlencoded" \
+                  -d "github_release_url=$RELEASE_URL" \
+                  -d "uuid=${{ env.uuid }}" \
+                  -d "filename=$BASENAME" \
+                  -d "version=${{ env.VERSION }}" \
+                  -d "variant=${{ env.variant }}" \
+                  "$TARGET_URL" 2>/dev/null) || HTTP_CODE="000"
+                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then break; fi
+              done
+            fi
+
+            GENURL="${{ env.genurl }}"
+            if [ -n "$GENURL" ] && [ -n "${{ env.uuid }}" ]; then
+              GEN_CLEAN="${GENURL%/}"
+              curl -k -s -L --post301 --post302 --post303 -o /dev/null \
+                --connect-timeout 8 --max-time 15 -X POST \
+                -H "Authorization: Bearer $AUTH_TOKEN" \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "uuid=${{ env.uuid }}" \
+                -d "filename=$BASENAME" \
+                "$GEN_CLEAN/save_custom_client" 2>/dev/null || true
+            fi
+          done
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:

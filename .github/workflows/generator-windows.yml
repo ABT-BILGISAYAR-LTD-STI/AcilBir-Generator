@@ -13,6 +13,11 @@ on:
         required: true
         default: ''
         type: string
+      app_version:
+        description: 'custom app version string (overrides build version)'
+        required: false
+        default: ''
+        type: string
 
 
 env:
@@ -28,9 +33,9 @@ env:
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_BINARY_SOURCES: "clear"
   # vcpkg version: 2024.07.12
-  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VERSION: "${{ inputs.version }}"
   NDK_VERSION: "r28c"
@@ -56,6 +61,7 @@ jobs:
     needs: setup
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
+      rustdesk-version: ${{ inputs.version }}
       upload-artifact: true
       target: windows-2022
       configuration: Release
@@ -81,7 +87,9 @@ jobs:
               target: x86_64-pc-windows-msvc,
               os: windows-2022,
               arch: x86_64,
+              flutter-arch: x64,
               vcpkg-triplet: x64-windows-static,
+              build-args: "--vram",
             }
           # - { target: aarch64-pc-windows-msvc, os: windows-2022, arch: aarch64 }
     steps:
@@ -148,6 +156,26 @@ jobs:
           ref: ${{ steps.resolve_ref.outputs.git_ref }}
           submodules: recursive
 
+      - name: Set custom app version
+        continue-on-error: true
+        if: ${{ inputs.app_version != '' }}
+        shell: bash
+        run: |
+          sed -i -e 's|^version = ".*"|version = "${{ inputs.app_version }}"|' ./Cargo.toml
+          sed -i '/name = "rustdesk"/ {n; s/version = ".*"/version = "${{ inputs.app_version }}"/}' ./Cargo.lock
+          grep '^version = ' ./Cargo.toml
+
+      - name: Apply allow_custom_update patch
+        continue-on-error: true
+        if: ${{ env.update_public_key != '' }}
+        shell: bash
+        run: |
+          curl -sSL -o allow_custom_update.py https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allow_custom_update.py
+          python3 allow_custom_update.py \
+            --rustdesk-root . \
+            --update-url "${{ env.downloadLink}}/api/version/latest" \
+            --ed25519-public-key "${{ env.update_public_key }}"
+
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
@@ -169,13 +197,9 @@ jobs:
         run: |
           sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.lock
           sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.yaml
-
       - name: override download link for Windows platform
         shell: bash
         run: |
-          # Platform-specific downloadLink override — ensures client updater
-          # downloads the correct binary regardless of form input.
-          # Admin/beta variants use prefixed platform names to match DB records.
           if [ "${{ env.variant }}" = "admin" ]; then
             DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/admin-Windows"
           elif [ "${{ env.variant }}" = "beta" ]; then
@@ -194,237 +218,43 @@ jobs:
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/mobile/pages/connection_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./src/ui/index.tis
 
-      - name: set server, key, and apiserver
+      - name: set server, serverPort, key, and apiserver
         continue-on-error: true
         shell: bash
+        env:
+          SERVER_DOMAIN: ${{ env.server }}
+          SERVER_PORT_INPUT: ${{ env.serverPort }}
+          SERVER_KEY: ${{ env.key }}
+          API_SERVER: ${{ env.apiServer }}
         run: |
           CLEAN_SERVER="${{ env.server }}"
           if [ -z "$CLEAN_SERVER" ] || [ "$CLEAN_SERVER" = "rs-ny.rustdesk.com" ]; then CLEAN_SERVER="acilbir.com"; fi
           
           CLEAN_KEY="${{ env.key }}"
           if [ -z "$CLEAN_KEY" ] || [ "$CLEAN_KEY" = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=" ]; then CLEAN_KEY="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="; fi
-
+          
           CLEAN_API_SERVER="${{ env.apiServer }}"
-          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
-          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
-          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
-
-          sed -i -e "s|rs-ny.rustdesk.com|${CLEAN_SERVER}|" ./libs/hbb_common/src/config.rs
-          sed -i -e "s|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${CLEAN_KEY}|" ./libs/hbb_common/src/config.rs
-          sed -i -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
-
-
-
-      - name: add key recovery module
-        shell: bash
-        run: |
-          cat > ./src/key_recovery.rs << 'KEY_RECOVERY_EOF'
-          // Remote config module — fetches updated server configuration via HTTP
-          // from the API server endpoint. This allows clients to dynamically
-          // update key, ID server, and relay server without needing a rebuild.
-          //
-          // The module writes updated values via Config::set_option(), which
-          // stores them in RustDesk2.toml [options] section. These values
-          // override DEFAULT_SETTINGS (custom.txt default mode) at runtime.
-
-          use hbb_common::config::Config;
-          use hbb_common::log;
-          use std::time::Duration;
-
-          const MAX_RETRY_ATTEMPTS: usize = 3;
-          const RETRY_DELAYS_SECS: [u64; 3] = [5, 15, 45];
-
-          #[derive(serde::Deserialize)]
-          struct ServerConfigResponse {
-              key: Option<String>,
-              #[serde(default)]
-              id_server: Option<String>,
-              #[serde(default)]
-              relay: Option<String>,
-              #[serde(default)]
-              api_server: Option<String>,
-          }
-
-          /// Fetches the current server configuration from the API endpoint.
-          /// Updates key, custom-rendezvous-server, and relay-server via
-          /// Config::set_option() which writes to RustDesk2.toml [options].
-          /// Returns true if any config value was updated.
-          pub fn fetch_and_update_config(api_server: &str) -> bool {
-              let url = format!(
-                  "{}/api/server-key",
-                  api_server.trim_end_matches('/')
-              );
-
-              log::info!("remote_config: checking {}", url);
-
-              let client = match reqwest::blocking::Client::builder()
-                  .timeout(Duration::from_secs(10))
-                  .build()
-              {
-                  Ok(c) => c,
-                  Err(e) => {
-                      log::warn!("remote_config: HTTP client build error: {}", e);
-                      return false;
-                  }
-              };
-
-              let resp = match client.get(&url).send() {
-                  Ok(r) => r,
-                  Err(e) => {
-                      log::warn!("remote_config: request failed: {}", e);
-                      return false;
-                  }
-              };
-
-              if !resp.status().is_success() {
-                  log::warn!("remote_config: server returned {}", resp.status());
-                  return false;
-              }
-
-              let data: ServerConfigResponse = match resp.json() {
-                  Ok(d) => d,
-                  Err(e) => {
-                      log::warn!("remote_config: JSON parse error: {}", e);
-                      return false;
-                  }
-              };
-
-              let mut updated = false;
-
-              // Update key
-              if let Some(ref new_key) = data.key {
-                  if !new_key.is_empty() {
-                      let current = Config::get_option("key");
-                      if current != *new_key {
-                          Config::set_option("key".to_string(), new_key.clone());
-                          log::info!("remote_config: key updated");
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update ID/rendezvous server
-              if let Some(ref new_id) = data.id_server {
-                  if !new_id.is_empty() {
-                      let current = Config::get_option("custom-rendezvous-server");
-                      if current != *new_id {
-                          Config::set_option(
-                              "custom-rendezvous-server".to_string(),
-                              new_id.clone(),
-                          );
-                          log::info!("remote_config: id_server updated to {}", new_id);
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update relay server
-              if let Some(ref new_relay) = data.relay {
-                  if !new_relay.is_empty() {
-                      let current = Config::get_option("relay-server");
-                      if current != *new_relay {
-                          Config::set_option("relay-server".to_string(), new_relay.clone());
-                          log::info!("remote_config: relay updated to {}", new_relay);
-                          updated = true;
-                      }
-                  }
-              }
-
-              if updated {
-                  log::info!("remote_config: configuration updated successfully");
-              } else {
-                  log::debug!("remote_config: no changes needed");
-              }
-
-              updated
-          }
-
-          /// Silent startup config check. Runs in a background thread.
-          /// Does not show any UI to the user.
-          pub fn startup_config_check(api_server: &str) {
-              let api = api_server.to_string();
-              std::thread::spawn(move || {
-                  std::thread::sleep(Duration::from_secs(3));
-                  if fetch_and_update_config(&api) {
-                      log::info!("remote_config: startup check updated config");
-                  } else {
-                      log::debug!("remote_config: startup check - no update needed");
-                  }
-              });
-          }
-
-          /// Connection error recovery with exponential backoff.
-          /// Attempts 3 times with delays of 5s, 15s, 45s.
-          pub fn connection_error_recovery(api_server: &str) -> bool {
-              for (attempt, delay) in RETRY_DELAYS_SECS.iter().enumerate() {
-                  log::info!(
-                      "remote_config: recovery attempt {}/{} (waiting {}s)",
-                      attempt + 1,
-                      MAX_RETRY_ATTEMPTS,
-                      delay
-                  );
-                  std::thread::sleep(Duration::from_secs(*delay));
-
-                  if fetch_and_update_config(api_server) {
-                      log::info!(
-                          "remote_config: recovery succeeded on attempt {}",
-                          attempt + 1,
-                      );
-                      return true;
-                  }
-              }
-
-              log::error!("remote_config: all {} attempts failed", MAX_RETRY_ATTEMPTS);
-              false
-          }
-
-          /// Initialize remote config at startup.
-          /// API server URL is injected at build time.
-          pub fn init() {
-              startup_config_check("API_SERVER_PLACEHOLDER");
-          }
-          KEY_RECOVERY_EOF
-
-          # Inject actual API server URL into key_recovery module
-          CLEAN_API_SERVER="${{ env.apiServer }}"
-          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
-          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
-          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
-          sed -i "s|API_SERVER_PLACEHOLDER|${CLEAN_API_SERVER}|" ./src/key_recovery.rs
-
-          # Add mod declaration to main.rs — çok satırlı #![...] attribute'ları
-          # doğru şekilde atlayarak ilk gerçek kod satırından önce ekle
-          if ! grep -q 'mod key_recovery' ./src/main.rs; then
-            awk '
-              BEGIN { in_attr = 0; inserted = 0 }
-              /^#!\[/ { in_attr = 1 }
-              in_attr {
-                print
-                if (/\]/) in_attr = 0
-                next
-              }
-              /^[[:space:]]*$/ { print; next }
-              /^[[:space:]]*\/\// { print; next }
-              !inserted {
-                print "mod key_recovery;"
-                inserted = 1
-              }
-              { print }
-            ' ./src/main.rs > ./src/main.rs.tmp && mv ./src/main.rs.tmp ./src/main.rs
+          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then
+            CLEAN_API_SERVER="https://acilbir.com"
+          elif [[ "$CLEAN_API_SERVER" != http://* ]] && [[ "$CLEAN_API_SERVER" != https://* ]]; then
+            CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"
           fi
+          CLEAN_API_SERVER="${CLEAN_API_SERVER%/}"
 
-          # Inject key_recovery::init() call into main() function
-          if ! grep -q 'key_recovery::init' ./src/main.rs; then
-            sed -i '/fn main/a\    key_recovery::init();' ./src/main.rs
-          fi
+          CLEAN_URL_LINK="${{ env.urlLink }}"
+          if [ -z "$CLEAN_URL_LINK" ]; then CLEAN_URL_LINK="https://acilbir.com"; fi
 
-          # Add reqwest blocking feature to Cargo.toml if not already present
-          if grep -q 'reqwest' ./Cargo.toml; then
-            if ! grep 'reqwest' ./Cargo.toml | grep -q '"blocking"'; then
-              # "blocking" not in reqwest features, add it to the reqwest features array
-              sed -i '/^reqwest/s/features = \["/features = ["blocking", "/' ./Cargo.toml 2>/dev/null || true
-            fi
-          fi
+          CLEAN_COMPNAME="${{ env.compname }}"
+          if [ -z "$CLEAN_COMPNAME" ]; then CLEAN_COMPNAME="ABT Bilgisayar Programlama ve Tic.Ltd.Sti."; fi
+
+          python3 patch_branding.py \
+            --root . \
+            --appname "${{ env.appname }}" \
+            --compname "$CLEAN_COMPNAME" \
+            --server-host "$CLEAN_SERVER" \
+            --key "$CLEAN_KEY" \
+            --api-server "$CLEAN_API_SERVER" \
+            --variant "${{ env.variant }}"
 
       - name: allow custom.txt
         uses: nick-fields/retry@v3
@@ -438,6 +268,55 @@ jobs:
               cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
               python fixUpdaterDownloadUrl.py
             }
+
+      - name: Patch remote printer port to spool file
+        shell: python
+        run: |
+          import os, re
+
+          src = "."
+          app = os.environ.get("appname") or "RustDesk"
+          literal = "C:\\\\ProgramData\\\\%s\\\\printer-spool\\\\job.prn" % app
+
+          # atch Rust remote_printer lib.rs
+          rs = os.path.join(src, "libs", "remote_printer", "src", "lib.rs")
+          if os.path.isfile(rs):
+              with open(rs, "r", encoding="utf-8") as f:
+                  t = f.read()
+              if "printer-spool" in t:
+                  print("Rust printer port already points to spool file")
+              else:
+                  old = ('fn get_port_name(app_name: &str) -> Vec<u16> {\n'
+                         '    format!("{} Printer", app_name)')
+                  new = ('fn get_port_name(app_name: &str) -> Vec<u16> {\n'
+                         '    let base = std::env::var("ProgramData")\n'
+                         '        .unwrap_or_else(|_| "C:\\\\ProgramData".to_string());\n'
+                         '    let dir = format!("{}\\\\{}\\\\printer-spool", base, app_name);\n'
+                         '    let _ = std::fs::create_dir_all(&dir);\n'
+                         '    format!("{}\\\\job.prn", dir)')
+                  if old in t:
+                      with open(rs, "w", encoding="utf-8") as f:
+                          f.write(t.replace(old, new, 1))
+                      print("Successfully patched Rust printer port")
+                  else:
+                      print("Warning: get_port_name() signature not matched in Rust source")
+
+          # patch C++ MSI Custom Action
+          cpp = os.path.join(src, "res", "msi", "CustomActions", "RemotePrinter.cpp")
+          if os.path.isfile(cpp):
+              with open(cpp, "r", encoding="utf-8") as f:
+                  t = f.read()
+              if "printer-spool" in t:
+                  print("MSI printer port already points to spool file")
+              else:
+                  pattern = r'(RD_PRINTER_PORT\s*=\s*)L"[^"]*"'
+                  new_t, n = re.subn(pattern, lambda m: m.group(1) + 'L"%s"' % literal, t, count=1)
+                  if n == 1:
+                      with open(cpp, "w", encoding="utf-8") as f:
+                          f.write(new_t)
+                      print("Successfully patched MSI CustomAction printer port")
+                  else:
+                      print("Warning: RD_PRINTER_PORT not matched in RemotePrinter.cpp")
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
@@ -475,7 +354,9 @@ jobs:
           if [ -f .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff ]; then
             cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
             cd $(dirname $(dirname $(which flutter)))
-            [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff || true
+            [[ "3.24.5" == "$(flutter --version | head -n 1 | awk '{print $2}')" ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff || true
+            cd -
+          fi
           fi
 
       - name: Install Rust toolchain
@@ -489,7 +370,15 @@ jobs:
         with:
           prefix-key: ${{ matrix.job.os }}
 
-      - name: Setup vcpkg with Github Actions binary cache
+      - name: Restore vcpkg installed cache
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-windows-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}
+          restore-keys: |
+            vcpkg-windows-${{ env.VCPKG_COMMIT_ID }}-
+
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: C:\vcpkg
@@ -515,6 +404,13 @@ jobs:
           fi
           head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
         shell: bash
+
+      - name: Save vcpkg installed cache
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-windows-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}
           
       - name: magick stuff
         if: ${{ env.iconlink_url != 'false' }}
@@ -534,12 +430,15 @@ jobs:
             mv ./res/64x64.png ./res/64x64.png.bak
             mv ./res/128x128.png ./res/128x128.png.bak
             mv ./res/128x128@2x.png ./res/128x128@2x.png.bak
-            magick ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/icon.ico
-            cp ./res/icon.ico ./res/tray-icon.ico
+            # every size Windows asks for at 100-200% scaling, so it never rescales on the fly
+            magick ./res/icon.png -define icon:auto-resize=256,128,96,64,48,40,32,24,20,16 ./res/icon.ico
+            # the tray decodes the largest entry of this file, so keep it a single 32x32 like upstream
+            # (a 256 entry here is shrunk to 16-24 px by the shell and comes out jagged)
+            magick ./res/icon.png -resize 32x32 ./res/tray-icon.ico
             magick ./res/icon.png -resize 32x32 ./res/32x32.png
             magick ./res/icon.png -resize 64x64 ./res/64x64.png
             magick ./res/icon.png -resize 128x128 ./res/128x128.png
-            magick ./res/128x128.png -resize 200% ./res/128x128@2x.png
+            magick ./res/icon.png -resize 256x256 ./res/128x128@2x.png
 
 
       - name: ui.rs icon
@@ -547,8 +446,12 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          cp ./src/ui.rs ./src/ui.rs.bak
-          b64=$(base64 -w0 < ./res/icon.png)
+          IMAGE_PATH="./res/icon.png"
+          if [ ! -f "$IMAGE_PATH" ]; then
+            echo "Error: Image file '$IMAGE_PATH' not found or is a directory."
+            exit 1
+          fi
+          b64=$(base64 -w0 "$IMAGE_PATH")
           perl -0777 -pe "s|iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHL[A-Za-z0-9+/=]+|$b64|g" -i.bak ./src/ui.rs
           b64=""
 
@@ -557,7 +460,11 @@ jobs:
         if: ${{ env.delayFix == 'true' }}
         shell: bash
         run: |
-          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+          # Precise fix: only extend the direct-connection condition with the
+          # key check, instead of globally replacing !key.is_empty() with
+          # false (which would also disable TCP encryption and UDP logic).
+          sed -i -e 's#if is_local || peer_nat_type == NatType::SYMMETRIC {#if is_local || peer_nat_type == NatType::SYMMETRIC || !key.is_empty() {#' ./src/client.rs
+          grep -n "key.is_empty()" ./src/client.rs || true
 
       - name: use X for offline display instead of orange circle
         if: env.xOffline == 'true'
@@ -592,6 +499,9 @@ jobs:
           #flutter pub upgrade win32
           flutter pub get
           flutter pub run flutter_launcher_icons
+          # flutter_launcher_icons writes app_icon.ico with a single 48x48 image, which the taskbar,
+          # the exe and the shortcuts then rescale; use the multi-size icon instead
+          cp ../res/icon.ico ./windows/runner/resources/app_icon.ico
           cd ..
 
       - name: Prepare Flutter and Dependencies
@@ -600,9 +510,10 @@ jobs:
           echo "=== Checking Bridge Files ==="
           ls -la ./flutter/lib/generated_bridge.dart || echo "WARNING: generated_bridge.dart not found!"
           ls -la ./src/bridge_generated.rs || echo "WARNING: bridge_generated.rs not found!"
-          cd ./flutter
+          
+          pushd flutter
           flutter pub get
-          cd ..
+          popd
 
       - name: Build rustdesk
         run: |
@@ -625,23 +536,12 @@ jobs:
             Write-Host "Notice: usbmmidd setup skipped"
           }
 
-          # Download printer driver files and extract them to ./rustdesk
+          # Download and install driver package
           try {
             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip -ErrorAction SilentlyContinue
-            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/printer_driver_adapter.zip -OutFile printer_driver_adapter.zip -ErrorAction SilentlyContinue
-
-            if (Test-Path rustdesk_printer_driver_v4-1.4.zip) {
-              New-Item -ItemType Directory -Force -Path ./rustdesk/drivers/RustDeskPrinterDriver -ErrorAction SilentlyContinue | Out-Null
-              Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath ./rustdesk/drivers/RustDeskPrinterDriver -Force -ErrorAction SilentlyContinue
-              if (Test-Path ./rustdesk/drivers/RustDeskPrinterDriver/rustdesk_printer_driver_v4-1.4) {
-                Copy-Item -Path ./rustdesk/drivers/RustDeskPrinterDriver/rustdesk_printer_driver_v4-1.4/* -Destination ./rustdesk/drivers/RustDeskPrinterDriver -Recurse -Force -ErrorAction SilentlyContinue
-              }
-            }
-            if (Test-Path printer_driver_adapter.zip) {
-              Expand-Archive printer_driver_adapter.zip -DestinationPath ./rustdesk -Force -ErrorAction SilentlyContinue
-            }
-          } catch {
-            Write-Host "Notice: printer driver setup skipped"
+            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_idd_driver_v4-1.4.zip -OutFile rustdesk_idd_driver_v4-1.4.zip -ErrorAction SilentlyContinue
+            Expand-Archive -Path rustdesk_printer_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
+            Expand-Archive -Path rustdesk_idd_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
           }
 
       - name: icon stuff
@@ -650,6 +550,11 @@ jobs:
         run: |
           mv ./rustdesk/data/flutter_assets/assets/icon.svg ./rustdesk/data/flutter_assets/assets/icon.svg.bak
           magick ./res/icon.png ./rustdesk/data/flutter_assets/assets/icon.svg
+          # assets/icon.png is loaded before icon.svg (which above only wraps the 256 px png) by the
+          # title bar (16 px), the connection manager (30 px) and the tray; 48 px serves all three
+          # with at most a 3x downscale. icon.ico is picked up for the shortcuts.
+          magick ./res/icon.png -resize 48x48 ./rustdesk/data/flutter_assets/assets/icon.png
+          cp ./res/icon.ico ./rustdesk/data/flutter_assets/assets/icon.ico
 
       - name: logo stuff
         continue-on-error: true
@@ -766,7 +671,7 @@ jobs:
           $myappname = "${{ env.appname }}" -replace '\s','_'
           cp "rustdesk/${{ env.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
           pushd ./res/msi
-          python preprocess.py --app-name "$myappname" --arp -d ../../rustdesk
+          python preprocess.py --app-name "${{ env.appname }}" --arp -d ../../rustdesk
           nuget restore msi.sln
           msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10 /p:Version=1.0.0
           if (Test-Path ./Package/bin/x64/Release/en-us/Package.msi) {
@@ -831,167 +736,75 @@ jobs:
 
       - name: Create GitHub Release and Upload Artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
-          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          set -euo pipefail
-
-          # Admin variant ise release tag'a -admin suffix ekle
-          VARIANT="${{ env.variant }}"
-          if [ "$VARIANT" = "admin" ]; then
-            TAG_NAME="v${{ env.VERSION }}-admin"
-          elif [ "$VARIANT" = "beta" ]; then
-            TAG_NAME="v${{ env.VERSION }}-beta"
-          else
-            TAG_NAME="v${{ env.VERSION }}"
-          fi
-          echo "=== Release Configuration ==="
-          echo "TAG_NAME: $TAG_NAME"
-          echo "FILENAME: ${{ env.filename }}"
-          echo "APPNAME: ${{ env.appname }}"
-          echo "UUID: ${{ env.uuid }}"
-          
-          # Validate required env vars
-          if [ -z "${{ env.filename }}" ]; then
-            echo "::error::env.filename is empty - secrets may not have loaded correctly"
-            exit 1
-          fi
-          if [ -z "${{ env.uuid }}" ]; then
-            echo "::error::env.uuid is empty - secrets may not have loaded correctly"
-            exit 1
+          TAG_NAME="v${{ env.VERSION }}"
+          if [ -z "${{ env.VERSION }}" ] || [ "${{ env.VERSION }}" = "master" ] || [ "${{ env.VERSION }}" = "nightly" ]; then
+            TAG_NAME="v1.5.0-${{ env.uuid }}"
           fi
 
-          # Collect artifacts
-          ARTIFACTS=""
-          if [ -d "./SignOutput" ]; then
-             ARTIFACTS=$(find ./SignOutput -name "${{ env.filename }}.*" -type f 2>/dev/null || true)
+          TITLE="AcilBir ${{ env.VERSION }}"
+          if [ "${{ env.variant }}" = "admin" ]; then
+            TITLE="AcilBir (Admin) ${{ env.VERSION }}"
+          elif [ "${{ env.variant }}" = "beta" ]; then
+            TITLE="AcilBir (Beta) ${{ env.VERSION }}"
           fi
-          
-          if [ -z "$ARTIFACTS" ]; then
-            echo "::error::No artifacts found matching '${{ env.filename }}.*' in ./SignOutput/"
-            echo "Contents of ./SignOutput/:"
-            ls -la ./SignOutput/ 2>/dev/null || echo "Directory does not exist"
-            exit 1
-          fi
-          
-          echo "=== Found artifacts ==="
-          echo "$ARTIFACTS"
-          echo "========================"
 
-          # Release yoksa oluştur, varsa sadece asset yükle
-          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
-            echo "Creating new release $TAG_NAME..."
+          echo "Ensuring release exists for tag $TAG_NAME..."
+          gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
             gh release create "$TAG_NAME" \
               --repo "${{ github.repository }}" \
-              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
-              --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
-          else
-            echo "Release $TAG_NAME already exists, uploading assets..."
-          fi
+              --title "$TITLE" \
+              --notes "Automated build for AcilBir ${{ env.VERSION }} (${{ env.variant }})" \
+              --prerelease=false || true
 
-          # Tüm artifact'ları release'e yükle (varsa üzerine yaz)
-          for ARTIFACT_PATH in $ARTIFACTS; do
-            BASENAME=$(basename "$ARTIFACT_PATH")
-            echo "Uploading $BASENAME..."
-            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" \
-              --repo "${{ github.repository }}" \
-              --clobber || echo "::warning::Failed to upload $BASENAME"
-          done
-          
-          # Notify backend with retry
-          GENURL="${{ env.genurl }}"
-          API_SERVER="${{ env.apiServer }}"
-          AUTH_TOKEN="${{ env.token }}"
-          
-          # Fallback: use GH_PAT if env.token is empty
-          if [ -z "$AUTH_TOKEN" ]; then AUTH_TOKEN="${{ secrets.GHBEARER || secrets.GH_PAT || secrets.GITHUB_TOKEN }}"; fi
+          for file in ./SignOutput/*.exe ./SignOutput/*.msi; do
+            [ -f "$file" ] || continue
+            BASENAME=$(basename "$file")
+            echo "Uploading $BASENAME to GitHub Release $TAG_NAME..."
+            gh release upload "$TAG_NAME" "$file" --repo "${{ github.repository }}" --clobber || true
 
-          # Clean API_SERVER URL
-          API_SERVER="${API_SERVER%/}"
-          
-          # Tüm artifact'lar için İndirme Portalı DB callback'i gönder
-          for ARTIFACT_PATH in $ARTIFACTS; do
-            BASENAME=$(basename "$ARTIFACT_PATH")
             RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$BASENAME"
-            echo "Callback for $BASENAME: $RELEASE_URL"
-            
-            # 1. Go API callback — DB source of truth (HTTPS ve HTTP fallback ile)
-            CALLBACK_SUCCESS=false
+            AUTH_TOKEN="${{ env.token }}"
+            [ -z "$AUTH_TOKEN" ] && AUTH_TOKEN="${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}"
+
+            # Dual callbacks: Go API & Generator
+            API_SERVER="${{ env.apiServer }}"
             if [ -n "$API_SERVER" ]; then
-              # Form URL candidates (prefer https, fallback to http)
               URL_CANDIDATES=()
-              if [[ "$API_SERVER" == https://* ]]; then
-                URL_CANDIDATES+=("$API_SERVER/api/save_custom_client")
-                URL_CANDIDATES+=("http://${API_SERVER#https://}/api/save_custom_client")
-              elif [[ "$API_SERVER" == http://* ]]; then
-                URL_CANDIDATES+=("https://${API_SERVER#http://}/api/save_custom_client")
-                URL_CANDIDATES+=("$API_SERVER/api/save_custom_client")
+              if [[ "$API_SERVER" == http://* ]] || [[ "$API_SERVER" == https://* ]]; then
+                URL_CANDIDATES+=("${API_SERVER%/}/api/save_custom_client")
               else
                 URL_CANDIDATES+=("https://$API_SERVER/api/save_custom_client")
                 URL_CANDIDATES+=("http://$API_SERVER/api/save_custom_client")
               fi
 
               for TARGET_URL in "${URL_CANDIDATES[@]}"; do
-                echo "Trying Go API callback at $TARGET_URL..."
-                for attempt in 1 2; do
-                  HTTP_CODE=$(curl -k -s -L --post301 --post302 --post303 -o /dev/null -w "%{http_code}" \
-                    --connect-timeout 10 --max-time 20 \
-                    -X POST \
-                    -H "Authorization: Bearer $AUTH_TOKEN" \
-                    -H "Content-Type: application/x-www-form-urlencoded" \
-                    -d "github_release_url=$RELEASE_URL" \
-                    -d "uuid=${{ env.uuid }}" \
-                    -d "filename=$BASENAME" \
-                    -d "version=${{ env.VERSION }}" \
-                    -d "variant=${{ env.variant }}" \
-                    "$TARGET_URL" 2>/dev/null) || HTTP_CODE="000"
-                  
-                  echo "Go API callback HTTP status: $HTTP_CODE (attempt $attempt)"
-                  if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                    CALLBACK_SUCCESS=true
-                    echo "✅ Go API callback succeeded for $BASENAME ($TARGET_URL)"
-                    break 2
-                  fi
-                  sleep 2
-                done
-              done
-              
-              if [ "$CALLBACK_SUCCESS" != "true" ]; then
-                echo "::warning::Go API callback finished (ReleaseSyncService will also sync from GitHub Releases)"
-              fi
-            fi
-            
-            # 2. Generator callback — GithubRun status güncellemesi
-            if [ -n "$GENURL" ] && [ -n "${{ env.uuid }}" ]; then
-              GEN_CANDIDATES=()
-              GENURL_CLEAN="${GENURL%/}"
-              if [[ "$GENURL_CLEAN" == https://* ]]; then
-                GEN_CANDIDATES+=("$GENURL_CLEAN/save_custom_client")
-                GEN_CANDIDATES+=("http://${GENURL_CLEAN#https://}/save_custom_client")
-              elif [[ "$GENURL_CLEAN" == http://* ]]; then
-                GEN_CANDIDATES+=("https://${GENURL_CLEAN#http://}/save_custom_client")
-                GEN_CANDIDATES+=("$GENURL_CLEAN/save_custom_client")
-              else
-                GEN_CANDIDATES+=("https://$GENURL_CLEAN/save_custom_client")
-                GEN_CANDIDATES+=("http://$GENURL_CLEAN/save_custom_client")
-              fi
-
-              for GTARGET in "${GEN_CANDIDATES[@]}"; do
-                echo "Triggering Generator status callback at $GTARGET..."
-                GCODE=$(curl -k -s -L --post301 --post302 --post303 -o /dev/null -w "%{http_code}" \
-                  --connect-timeout 8 --max-time 15 \
-                  -X POST \
+                HTTP_CODE=$(curl -k -s -L --post301 --post302 --post303 -o /dev/null -w "%{http_code}" \
+                  --connect-timeout 10 --max-time 20 -X POST \
                   -H "Authorization: Bearer $AUTH_TOKEN" \
                   -H "Content-Type: application/x-www-form-urlencoded" \
+                  -d "github_release_url=$RELEASE_URL" \
                   -d "uuid=${{ env.uuid }}" \
                   -d "filename=$BASENAME" \
-                  "$GTARGET" 2>/dev/null) || GCODE="000"
-                if [ "$GCODE" -ge 200 ] && [ "$GCODE" -lt 300 ]; then
-                  echo "✅ Generator callback succeeded ($GTARGET)"
-                  break
-                fi
+                  -d "version=${{ env.VERSION }}" \
+                  -d "variant=${{ env.variant }}" \
+                  "$TARGET_URL" 2>/dev/null) || HTTP_CODE="000"
+                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then break; fi
               done
+            fi
+
+            GENURL="${{ env.genurl }}"
+            if [ -n "$GENURL" ] && [ -n "${{ env.uuid }}" ]; then
+              GEN_CLEAN="${GENURL%/}"
+              curl -k -s -L --post301 --post302 --post303 -o /dev/null \
+                --connect-timeout 8 --max-time 15 -X POST \
+                -H "Authorization: Bearer $AUTH_TOKEN" \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "uuid=${{ env.uuid }}" \
+                -d "filename=$BASENAME" \
+                "$GEN_CLEAN/save_custom_client" 2>/dev/null || true
             fi
           done
 

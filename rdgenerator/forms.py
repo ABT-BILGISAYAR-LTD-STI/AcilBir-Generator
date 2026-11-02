@@ -1,20 +1,28 @@
+import re
+
 from django import forms
 from PIL import Image
+
+# App/company names are interpolated into single/double-quoted bash sed
+# scripts in every generator workflow: & \ | corrupt the substitution
+# silently, ' " $ ` break shell quoting, CR/LF break sed addressing.
+UNSAFE_NAME_CHARS = re.compile(r'[&\\|\'"$`\r\n]')
 
 class GenerateForm(forms.Form):
     sh_secret_field = forms.CharField(required=False)
     platform = forms.ChoiceField(choices=[('windows','Windows 64Bit'),('windows-x86','Windows 32Bit'),('linux','Linux'),('android','Android'),('macos','macOS')], initial='windows')
     version = forms.CharField(
         label="AcilBir Client Version",
-        initial='1.4.10-1',
+        initial='1.5.0',
         required=True,
         widget=forms.TextInput(attrs={
-            'placeholder': 'Örn: 1.4.10, 1.5.0, 2.0.0 veya master',
+            'placeholder': 'Örn: 1.5.1, 1.5.0, 1.4.15 veya master',
             'list': 'version-datalist',
             'autocomplete': 'off'
         }),
-        help_text="İstediğiniz sürüm numarasını serbestçe yazabilirsiniz (Örn: 1.4.10, 1.5.0, 2.0.0 veya master)."
+        help_text="İstediğiniz sürüm numarasını serbestçe yazabilirsiniz (Örn: 1.5.1, 1.5.0, 1.4.15 veya master)."
     )
+    app_version = forms.CharField(label="App Version Override", required=False, help_text="İsteğe bağlı: build içine gömülen sürüm numarasını geçersiz kılar.")
     variant = forms.ChoiceField(choices=[('client','Müşteri Client'),('admin','Admin Client'),('beta','Beta/Test Client')], initial='client', required=False)
     delayFix = forms.BooleanField(initial=True, required=False)
 
@@ -38,6 +46,7 @@ class GenerateForm(forms.Form):
 
     #Custom Server
     serverIP = forms.CharField(label="Host", required=False, initial="acilbir.com")
+    serverPort = forms.CharField(label="Port", required=False, initial="21116")
     apiServer = forms.CharField(label="API Server", required=False, initial="https://acilbir.com")
     key = forms.CharField(label="Key", required=False, initial="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE=")
     urlLink = forms.CharField(label="Custom URL for links", required=False, initial="https://acilbir.com")
@@ -118,3 +127,18 @@ class GenerateForm(forms.Form):
                 raise forms.ValidationError("Invalid icon file.")
             except Exception as e: # Catch any other image processing errors
                 raise forms.ValidationError(f"Error processing icon: {e}")
+
+    def _reject_unsafe_name_chars(self, field):
+        value = self.cleaned_data.get(field, '')
+        if value and UNSAFE_NAME_CHARS.search(value):
+            raise forms.ValidationError(
+                "Contains characters unsupported in build scripts "
+                "(& \\ | ' \" $ `, newlines)."
+            )
+        return value
+
+    def clean_appname(self):
+        return self._reject_unsafe_name_chars('appname')
+
+    def clean_compname(self):
+        return self._reject_unsafe_name_chars('compname')

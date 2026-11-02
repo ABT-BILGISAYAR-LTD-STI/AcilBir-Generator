@@ -13,6 +13,11 @@ on:
         required: true
         default: ''
         type: string
+      app_version:
+        description: 'custom app version string (overrides build version)'
+        required: false
+        default: ''
+        type: string
 
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
@@ -28,9 +33,10 @@ env:
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_BINARY_SOURCES: "clear"
   # vcpkg version: 2024.07.12
-  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  VCPKG_CMAKE_VERSION: "4.3.0"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VERSION: "${{ inputs.version }}"
   NDK_VERSION: "r28c"
@@ -189,9 +195,27 @@ jobs:
           name: bridge-artifact
           path: ./
 
-      - name: Setup vcpkg with Github Actions binary cache
+      # vcpkg 2026.07.29's SPDX scripts require CMake 4.3+, but this ARM64 runner selects CMake 3.31.
+      - name: Install CMake for vcpkg on Linux ARM64
+        if: matrix.job.arch == 'aarch64' && env.UPLOAD_ARTIFACT == 'true'
+        run: |
+          python3 -m pip install --user "cmake==${VCPKG_CMAKE_VERSION}"
+          user_base="$(python3 -m site --user-base)"
+          "${user_base}/bin/cmake" --version
+          echo "${user_base}/bin" >> "${GITHUB_PATH}"
+
+      - name: Restore vcpkg installed cache
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
-        uses: lukka/run-vcpkg@v11
+        uses: actions/cache@v4
+        with:
+          path: /opt/artifacts/vcpkg/installed
+          key: vcpkg-linux-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}
+          restore-keys: |
+            vcpkg-linux-${{ env.VCPKG_COMMIT_ID }}-
+
+      - name: Setup vcpkg
+        if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
         with:
           vcpkgDirectory: /opt/artifacts/vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
@@ -216,6 +240,14 @@ jobs:
           fi
           head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
         shell: bash
+
+      - name: Save vcpkg installed cache
+        if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: /opt/artifacts/vcpkg/installed
+          key: vcpkg-linux-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}
 
       - name: icon stuff
         continue-on-error: true
@@ -249,6 +281,55 @@ jobs:
 
 
           
+      - name: set server, serverPort, key, and apiserver
+        continue-on-error: true
+        shell: bash
+        env:
+          SERVER_DOMAIN: ${{ env.server }}
+          SERVER_PORT_INPUT: ${{ env.serverPort }}
+          SERVER_KEY: ${{ env.key }}
+          API_SERVER: ${{ env.apiServer }}
+        run: |
+          # Pass secrets via bash env vars to avoid quoting issues
+          if [ ! -f "./libs/hbb_common/src/config.rs" ]; then
+            echo "Error: config.rs not found!"
+            exit 1
+          fi
+          if [ ! -f "./src/common.rs" ]; then
+            echo "Error: common.rs not found!"
+            exit 1
+          fi
+
+          # Port must be a number; views.py defaults it to 21116
+          if ! [[ "$SERVER_PORT_INPUT" =~ ^[0-9]+$ ]]; then
+            echo "Error: serverPort must be a number, got: '$SERVER_PORT_INPUT'"
+            exit 1
+          fi
+
+          # Derive the port block from the rendezvous port
+          # (defaults 21116/21117/21118/21119)
+          SERVER_PORT=$SERVER_PORT_INPUT
+          RELAY_PORT=$((SERVER_PORT + 1))
+          WS_RENDEZVOUS_PORT=$((RELAY_PORT + 1))
+          WS_RELAY_PORT=$((WS_RENDEZVOUS_PORT + 1))
+
+          echo "Setting server: $SERVER_DOMAIN"
+          echo "Setting ports: $SERVER_PORT, $RELAY_PORT, $WS_RENDEZVOUS_PORT, $WS_RELAY_PORT"
+
+          sed -i -e "s|rs-ny.rustdesk.com|$SERVER_DOMAIN|" ./libs/hbb_common/src/config.rs
+
+          # Match on numeric value so the step is independent of defaults
+          sed -i -e "s|pub const RENDEZVOUS_PORT: i32 = [0-9][0-9]*;|pub const RENDEZVOUS_PORT: i32 = $SERVER_PORT;|" ./libs/hbb_common/src/config.rs
+          sed -i -e "s|pub const RELAY_PORT: i32 = [0-9][0-9]*;|pub const RELAY_PORT: i32 = $RELAY_PORT;|" ./libs/hbb_common/src/config.rs
+          sed -i -e "s|pub const WS_RENDEZVOUS_PORT: i32 = [0-9][0-9]*;|pub const WS_RENDEZVOUS_PORT: i32 = $WS_RENDEZVOUS_PORT;|" ./libs/hbb_common/src/config.rs
+          sed -i -e "s|pub const WS_RELAY_PORT: i32 = [0-9][0-9]*;|pub const WS_RELAY_PORT: i32 = $WS_RELAY_PORT;|" ./libs/hbb_common/src/config.rs
+
+          sed -i -e "s|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|$SERVER_KEY|" ./libs/hbb_common/src/config.rs
+          sed -i -e "s|https://admin.rustdesk.com|$API_SERVER|" ./src/common.rs
+
+          echo "=== Verification ==="
+          grep -nE "RENDEZVOUS_PORT|RELAY_PORT|WS_" ./libs/hbb_common/src/config.rs
+
       - name: allow custom.txt
         uses: nick-fields/retry@v3
         with:
@@ -262,234 +343,23 @@ jobs:
             
             CLEAN_KEY="${{ env.key }}"
             if [ -z "$CLEAN_KEY" ] || [ "$CLEAN_KEY" = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=" ]; then CLEAN_KEY="ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="; fi
-
+            
             CLEAN_API_SERVER="${{ env.apiServer }}"
-            if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
-            if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
-            CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
-
-            sed -i -e "s|rs-ny.rustdesk.com|${CLEAN_SERVER}|" ./libs/hbb_common/src/config.rs
-            sed -i -e "s|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${CLEAN_KEY}|" ./libs/hbb_common/src/config.rs
-            if [ -f "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" ]; then
-              cp "${{ github.workspace }}/.github/patches/fixUpdaterDownloadUrl.py" fixUpdaterDownloadUrl.py
-              python fixUpdaterDownloadUrl.py || true
+            if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then
+              CLEAN_API_SERVER="https://acilbir.com"
+            elif [[ "$CLEAN_API_SERVER" != http://* ]] && [[ "$CLEAN_API_SERVER" != https://* ]]; then
+              CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"
             fi
-            echo -n "${{ env.custom }}" | cat > ./custom_.txt
-            sed -i -e "s|https://admin.rustdesk.com|${CLEAN_API_SERVER}|" ./src/common.rs
+            CLEAN_API_SERVER="${CLEAN_API_SERVER%/}"
 
-
-
-      - name: add key recovery module
-        shell: bash
-        run: |
-          cat > ./src/key_recovery.rs << 'KEY_RECOVERY_EOF'
-          // Remote config module — fetches updated server configuration via HTTP
-          // from the API server endpoint. This allows clients to dynamically
-          // update key, ID server, and relay server without needing a rebuild.
-          //
-          // The module writes updated values via Config::set_option(), which
-          // stores them in RustDesk2.toml [options] section. These values
-          // override DEFAULT_SETTINGS (custom.txt default mode) at runtime.
-
-          use hbb_common::config::Config;
-          use hbb_common::log;
-          use std::time::Duration;
-
-          const MAX_RETRY_ATTEMPTS: usize = 3;
-          const RETRY_DELAYS_SECS: [u64; 3] = [5, 15, 45];
-
-          #[derive(serde::Deserialize)]
-          struct ServerConfigResponse {
-              key: Option<String>,
-              #[serde(default)]
-              id_server: Option<String>,
-              #[serde(default)]
-              relay: Option<String>,
-              #[serde(default)]
-              api_server: Option<String>,
-          }
-
-          /// Fetches the current server configuration from the API endpoint.
-          /// Updates key, custom-rendezvous-server, and relay-server via
-          /// Config::set_option() which writes to RustDesk2.toml [options].
-          /// Returns true if any config value was updated.
-          pub fn fetch_and_update_config(api_server: &str) -> bool {
-              let url = format!(
-                  "{}/api/server-key",
-                  api_server.trim_end_matches('/')
-              );
-
-              log::info!("remote_config: checking {}", url);
-
-              let client = match reqwest::blocking::Client::builder()
-                  .timeout(Duration::from_secs(10))
-                  .build()
-              {
-                  Ok(c) => c,
-                  Err(e) => {
-                      log::warn!("remote_config: HTTP client build error: {}", e);
-                      return false;
-                  }
-              };
-
-              let resp = match client.get(&url).send() {
-                  Ok(r) => r,
-                  Err(e) => {
-                      log::warn!("remote_config: request failed: {}", e);
-                      return false;
-                  }
-              };
-
-              if !resp.status().is_success() {
-                  log::warn!("remote_config: server returned {}", resp.status());
-                  return false;
-              }
-
-              let data: ServerConfigResponse = match resp.json() {
-                  Ok(d) => d,
-                  Err(e) => {
-                      log::warn!("remote_config: JSON parse error: {}", e);
-                      return false;
-                  }
-              };
-
-              let mut updated = false;
-
-              // Update key
-              if let Some(ref new_key) = data.key {
-                  if !new_key.is_empty() {
-                      let current = Config::get_option("key");
-                      if current != *new_key {
-                          Config::set_option("key".to_string(), new_key.clone());
-                          log::info!("remote_config: key updated");
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update ID/rendezvous server
-              if let Some(ref new_id) = data.id_server {
-                  if !new_id.is_empty() {
-                      let current = Config::get_option("custom-rendezvous-server");
-                      if current != *new_id {
-                          Config::set_option(
-                              "custom-rendezvous-server".to_string(),
-                              new_id.clone(),
-                          );
-                          log::info!("remote_config: id_server updated to {}", new_id);
-                          updated = true;
-                      }
-                  }
-              }
-
-              // Update relay server
-              if let Some(ref new_relay) = data.relay {
-                  if !new_relay.is_empty() {
-                      let current = Config::get_option("relay-server");
-                      if current != *new_relay {
-                          Config::set_option("relay-server".to_string(), new_relay.clone());
-                          log::info!("remote_config: relay updated to {}", new_relay);
-                          updated = true;
-                      }
-                  }
-              }
-
-              if updated {
-                  log::info!("remote_config: configuration updated successfully");
-              } else {
-                  log::debug!("remote_config: no changes needed");
-              }
-
-              updated
-          }
-
-          /// Silent startup config check. Runs in a background thread.
-          /// Does not show any UI to the user.
-          pub fn startup_config_check(api_server: &str) {
-              let api = api_server.to_string();
-              std::thread::spawn(move || {
-                  std::thread::sleep(Duration::from_secs(3));
-                  if fetch_and_update_config(&api) {
-                      log::info!("remote_config: startup check updated config");
-                  } else {
-                      log::debug!("remote_config: startup check - no update needed");
-                  }
-              });
-          }
-
-          /// Connection error recovery with exponential backoff.
-          /// Attempts 3 times with delays of 5s, 15s, 45s.
-          pub fn connection_error_recovery(api_server: &str) -> bool {
-              for (attempt, delay) in RETRY_DELAYS_SECS.iter().enumerate() {
-                  log::info!(
-                      "remote_config: recovery attempt {}/{} (waiting {}s)",
-                      attempt + 1,
-                      MAX_RETRY_ATTEMPTS,
-                      delay
-                  );
-                  std::thread::sleep(Duration::from_secs(*delay));
-
-                  if fetch_and_update_config(api_server) {
-                      log::info!(
-                          "remote_config: recovery succeeded on attempt {}",
-                          attempt + 1,
-                      );
-                      return true;
-                  }
-              }
-
-              log::error!("remote_config: all {} attempts failed", MAX_RETRY_ATTEMPTS);
-              false
-          }
-
-          /// Initialize remote config at startup.
-          /// API server URL is injected at build time.
-          pub fn init() {
-              startup_config_check("API_SERVER_PLACEHOLDER");
-          }
-          KEY_RECOVERY_EOF
-
-          # Inject actual API server URL into key_recovery module
-          CLEAN_API_SERVER="${{ env.apiServer }}"
-          if [ -z "$CLEAN_API_SERVER" ] || [[ "$CLEAN_API_SERVER" == rs-ny.rustdesk.com* ]]; then CLEAN_API_SERVER="https://acilbir.com"; fi
-          if [[ ! "$CLEAN_API_SERVER" =~ ^https?:// ]]; then CLEAN_API_SERVER="https://${CLEAN_API_SERVER}"; fi
-          CLEAN_API_SERVER="${CLEAN_API_SERVER%:21114}"
-          sed -i "s|API_SERVER_PLACEHOLDER|${CLEAN_API_SERVER}|" ./src/key_recovery.rs
-
-          # Add mod declaration to main.rs — çok satırlı #![...] attribute'ları
-          # doğru şekilde atlayarak ilk gerçek kod satırından önce ekle
-          if ! grep -q 'mod key_recovery' ./src/main.rs; then
-            awk '
-              BEGIN { in_attr = 0; inserted = 0 }
-              /^#!\[/ { in_attr = 1 }
-              in_attr {
-                print
-                if (/\]/) in_attr = 0
-                next
-              }
-              /^[[:space:]]*$/ { print; next }
-              /^[[:space:]]*\/\// { print; next }
-              !inserted {
-                print "mod key_recovery;"
-                inserted = 1
-              }
-              { print }
-            ' ./src/main.rs > ./src/main.rs.tmp && mv ./src/main.rs.tmp ./src/main.rs
-          fi
-
-          # Inject key_recovery::init() call into main() function
-          if ! grep -q 'key_recovery::init' ./src/main.rs; then
-            sed -i '/fn main/a\    key_recovery::init();' ./src/main.rs
-          fi
-
-          # Add reqwest blocking feature to Cargo.toml if not already present
-          if grep -q 'reqwest' ./Cargo.toml; then
-            if ! grep 'reqwest' ./Cargo.toml | grep -q '"blocking"'; then
-              # "blocking" not in reqwest features, add it to the reqwest features array
-              sed -i '/^reqwest/s/features = \["/features = ["blocking", "/' ./Cargo.toml 2>/dev/null || true
-            fi
-          fi
-
+            python3 patch_branding.py \
+              --root . \
+              --appname "${{ env.appname }}" \
+              --compname "${{ env.compname }}" \
+              --server-host "$CLEAN_SERVER" \
+              --key "$CLEAN_KEY" \
+              --api-server "$CLEAN_API_SERVER" \
+              --variant "${{ env.variant }}"
       - name: change url to custom
         if: env.urlLink != 'https://rustdesk.com'
         continue-on-error: true
@@ -532,7 +402,11 @@ jobs:
         if: ${{ env.delayFix == 'true' }}
         shell: bash
         run: |
-          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+          # Precise fix: only extend the direct-connection condition with the
+          # key check, instead of globally replacing !key.is_empty() with
+          # false (which would also disable TCP encryption and UDP logic).
+          sed -i -e 's#if is_local || peer_nat_type == NatType::SYMMETRIC {#if is_local || peer_nat_type == NatType::SYMMETRIC || !key.is_empty() {#' ./src/client.rs
+          grep -n "key.is_empty()" ./src/client.rs || true
 
       - name: use X for offline display instead of orange circle
         if: env.xOffline == 'true'
@@ -567,7 +441,7 @@ jobs:
           name: bridge-artifact
           path: ./
 
-      - uses: rustdesk-org/run-on-arch-action@amd64-support
+      - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8
         name: Build rustdesk
         id: vcpkg
         if: matrix.job.arch == 'x86_64' || env.UPLOAD_ARTIFACT == 'true'
@@ -652,7 +526,7 @@ jobs:
             echo $JOBS
 
             # Make the right unit stop when the services is stopped by tray
-            sed -ie "s|\(systemctl\s\+\S\+\s\){app_name}|\1${{ env.filename }}|g" src/platform/linux.rs
+            sed -ie "s|\(systemctl\s\+\S\+\s\){app_name}|\1${{ env.appname }}|g" src/platform/linux.rs
             sed -ie 's|\({home}/{p}/{app_name0}2\?.toml\)|\\"\1\\"|g' src/platform/linux.rs
             sed -ie 's|\(/root/{p}/\)|\\"\1\\"|g' src/platform/linux.rs
 
@@ -742,6 +616,25 @@ jobs:
                 sed -ie "s|\(cp .* \)tmpdeb/usr/share/rustdesk/files/systemd/|\1tmpdeb/usr/share/rustdesk/files/systemd/${{ env.appname }}.service|g" build.py
                 sed -ie "s|cp -r \(.\+\)\* \([^ ]\+\)/rustdesk|mv \1rustdesk \1${{ env.appname }}; cp -r \1\* \2/${{ env.appname }}|g" build.py
                 sed -ie "s|\(tmpdeb/[^ ]*\)rustdesk|\1${{ env.appname }}|g" build.py
+                # The rename above is greedy in \1, so it rewrites only the LAST
+                # "rustdesk" of each path and leaves build.py's globs pointing where the
+                # staging tree never exists. Three corrections, all confined to the drm
+                # code paths (assert_staged_binary_is_drm, measured_glibc_floor); the
+                # stock packaging path never executes those lines.
+                #
+                # 1. Directory component: the cp -r rename above stages into
+                #    tmpdeb/usr/share/<appname>/, but the globs kept usr/share/rustdesk/.
+                sed -ie "s|tmpdeb/usr/share/rustdesk/|tmpdeb/usr/share/${{ env.appname }}/|g" build.py
+                # 2. Library filename: build.py renames only the executable and copies the
+                #    bundle verbatim, so the cdylib stays librustdesk.so. The greedy sed
+                #    renamed it to lib<appname>.so, and that is the file carrying the drm
+                #    marker -- the thin Flutter launcher does not.
+                sed -ie "s|lib/lib${{ env.appname }}\.so|lib/librustdesk.so|g" build.py
+                # 3. libdrmtap must NOT be renamed: drmtap_dl.rs dlopens the absolute path
+                #    /usr/lib/rustdesk/libdrmtap.so.0, compiled into the binary and
+                #    rewritten by nothing here. Staging it under /usr/lib/<appname>/
+                #    packages and installs cleanly, then never loads on the user's machine.
+                sed -ie "s|tmpdeb/usr/lib/${{ env.appname }}|tmpdeb/usr/lib/rustdesk|g" build.py
                 sed -ie "s|Package: rustdesk|Package: ${{ env.appname }}|g" build.py
                 sed -ie "s|RustDesk|${{ env.appname }}|g" res/rustdesk.desktop
                 FILES=$(sed -ne "s~.*cp\s\(../\)\?\+\(.\+\.\(desktop\|service\)\)\s\+tmpdeb/.*~\2~p" build.py | sort | uniq)
@@ -768,6 +661,14 @@ jobs:
             for name in *.deb; do
               mv "$name" /workspace/output/"${{ env.filename }}-${{ matrix.job.arch }}.deb"
             done
+
+            # rpm/suse/arch package the flutter BUNDLE (not tmpdeb), so the deb's
+            # custom_.txt never reaches them. Copy it into the bundle too, so the
+            # baked password/permissions land in every format.
+            BUNDLE=flutter/build/linux/x64/release/bundle
+            [ "${{ matrix.job.arch }}" = "aarch64" ] && BUNDLE=flutter/build/linux/arm64/release/bundle
+            cp ./custom_.txt "$BUNDLE/custom_.txt" || echo "WARN: could not copy custom_.txt into bundle"
+            ls -l "$BUNDLE/custom_.txt" || echo "WARN: custom_.txt missing from bundle ($BUNDLE)"
 
             # rpm package
             echo -e "start packaging fedora package"
@@ -826,6 +727,10 @@ jobs:
 
       - name: Upload deb artifact for appimage and flatpak
         uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-deb-${{ matrix.job.arch }}
+          path: ./rustdesk*.deb
+          retention-days: 1
         if: env.UPLOAD_ARTIFACT == 'true'
         with:
           name: ${{ env.filename }}-${{ matrix.job.arch }}.deb
@@ -833,129 +738,32 @@ jobs:
 
       - name: Create GitHub Release and Upload Artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
-          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          set -euo pipefail
-
-          VARIANT="${{ env.variant }}"
-          if [ "$VARIANT" = "admin" ]; then
-            TAG_NAME="v${{ env.VERSION }}-admin"
-          elif [ "$VARIANT" = "beta" ]; then
-            TAG_NAME="v${{ env.VERSION }}-beta"
-          else
-            TAG_NAME="v${{ env.VERSION }}"
-          fi
-          echo "=== Release Configuration ==="
-          echo "TAG_NAME: $TAG_NAME"
-          echo "FILENAME: ${{ env.filename }}"
-          echo "UUID: ${{ env.uuid }}"
-          
-          if [ -z "${{ env.filename }}" ]; then
-            echo "::error::env.filename is empty"
-            exit 1
-          fi
-          if [ -z "${{ env.uuid }}" ]; then
-            echo "::error::env.uuid is empty"
-            exit 1
+          TAG_NAME="v${{ env.VERSION }}"
+          if [ -z "${{ env.VERSION }}" ] || [ "${{ env.VERSION }}" = "master" ] || [ "${{ env.VERSION }}" = "nightly" ]; then
+            TAG_NAME="v1.5.0-${{ env.uuid }}"
           fi
 
-          ARTIFACTS=""
-          if [ -d "./SignOutput" ]; then
-             ARTIFACTS=$(find ./SignOutput -name "${{ env.filename }}.*" -type f 2>/dev/null || true)
+          TITLE="AcilBir ${{ env.VERSION }}"
+          if [ "${{ env.variant }}" = "admin" ]; then
+            TITLE="AcilBir (Admin) ${{ env.VERSION }}"
+          elif [ "${{ env.variant }}" = "beta" ]; then
+            TITLE="AcilBir (Beta) ${{ env.VERSION }}"
           fi
-          if [ -z "$ARTIFACTS" ]; then
-             ARTIFACTS=$(find . \( -name "*.deb" -o -name "*.rpm" -o -name "*.pkg.tar.zst" \) -type f -not -path "*/.git/*" -not -name "rustdesk-debug-*" -not -name "rustdesk-[0-9]*" 2>/dev/null | grep -v "temp_zips" || true)
-          fi
-          
-          if [ -z "$ARTIFACTS" ]; then
-            echo "::error::No artifacts found matching '${{ env.filename }}.*'"
-            find . -name "*${{ env.filename }}*" -type f 2>/dev/null || echo "Nothing found"
-            exit 1
-          fi
-          
-          echo "=== Found artifacts ==="
-          echo "$ARTIFACTS"
 
-          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
-            echo "Creating new release $TAG_NAME..."
+          gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
             gh release create "$TAG_NAME" \
               --repo "${{ github.repository }}" \
-              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
-              --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
-          else
-            echo "Release $TAG_NAME already exists, uploading assets..."
-          fi
+              --title "$TITLE" \
+              --notes "Automated Linux build for AcilBir ${{ env.VERSION }} (${{ env.variant }})" \
+              --prerelease=false || true
 
-          for ARTIFACT_PATH in $ARTIFACTS; do
-            BASENAME=$(basename "$ARTIFACT_PATH")
-            echo "Uploading $BASENAME..."
-            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" \
-              --repo "${{ github.repository }}" \
-              --clobber || echo "::warning::Failed to upload $BASENAME"
-          done
-          
-          GENURL="${{ env.genurl }}"
-          API_SERVER="${{ env.apiServer }}"
-          AUTH_TOKEN="${{ env.token }}"
-          if [ -z "$AUTH_TOKEN" ]; then AUTH_TOKEN="${{ secrets.GHBEARER || secrets.GH_PAT || secrets.GITHUB_TOKEN }}"; fi
-
-          # Clean API_SERVER URL
-          API_SERVER="${API_SERVER%/}"
-          if [ -n "$API_SERVER" ] && [[ "$API_SERVER" != http* ]]; then
-            API_SERVER="http://$API_SERVER"
-          fi
-          
-          for ARTIFACT_PATH in $ARTIFACTS; do
-            BASENAME=$(basename "$ARTIFACT_PATH")
-            RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$BASENAME"
-            echo "Callback for $BASENAME: $RELEASE_URL"
-            
-            CALLBACK_SUCCESS=false
-            if [ -n "$API_SERVER" ]; then
-              for attempt in 1 2 3; do
-                echo "Go API callback attempt $attempt ($API_SERVER)..."
-                HTTP_CODE=$(curl -k -s -L -o /dev/null -w "%{http_code}" \
-                  --connect-timeout 15 --max-time 30 \
-                  -X POST \
-                  -H "Authorization: Bearer $AUTH_TOKEN" \
-                  -d "github_release_url=$RELEASE_URL" \
-                  -d "uuid=${{ env.uuid }}" \
-                  -d "filename=$BASENAME" \
-                  -d "version=${{ env.VERSION }}" \
-                  -d "variant=${{ env.variant }}" \
-                  "$API_SERVER/api/save_custom_client" 2>/dev/null) || HTTP_CODE="000"
-                
-                echo "Go API callback HTTP status: $HTTP_CODE"
-                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                  CALLBACK_SUCCESS=true
-                  echo "✅ Go API callback succeeded for $BASENAME"
-                  break
-                else
-                  echo "⚠️ Go API callback attempt $attempt failed (HTTP $HTTP_CODE)"
-                  [ "$attempt" -lt 3 ] && sleep 3
-                fi
-              done
-              
-              if [ "$CALLBACK_SUCCESS" != "true" ]; then
-                echo "::warning::Go API callback failed for $BASENAME after 3 attempts (Check apiServer URL and network reachability)"
-              fi
-            else
-              echo "::warning::apiServer is empty, skipping direct callback (ReleaseSyncService will sync from GitHub Releases)"
-            fi
-            
-            if [ -n "$GENURL" ] && [ -n "${{ env.uuid }}" ]; then
-              GENURL="${GENURL%/}"
-              if [[ "$GENURL" != http* ]]; then GENURL="http://$GENURL"; fi
-              curl -k -s -L -o /dev/null \
-                --connect-timeout 10 --max-time 20 \
-                -X POST \
-                -H "Authorization: Bearer $AUTH_TOKEN" \
-                -d "uuid=${{ env.uuid }}" \
-                -d "filename=$BASENAME" \
-                "$GENURL/save_custom_client" 2>/dev/null || true
-            fi
+          for file in ./rustdesk*.deb ./rustdesk*.rpm ./rustdesk*.pkg.tar.zst; do
+            [ -f "$file" ] || continue
+            BASENAME=$(basename "$file")
+            gh release upload "$TAG_NAME" "$file" --repo "${{ github.repository }}" --clobber || true
           done
 
   build-appimage:
@@ -996,6 +804,26 @@ jobs:
           repository: HalilUral14/AcilBir
           ref: master
           submodules: recursive
+
+      - name: Set custom app version
+        continue-on-error: true
+        if: ${{ inputs.app_version != '' }}
+        shell: bash
+        run: |
+          sed -i -e 's|^version = ".*"|version = "${{ inputs.app_version }}"|' ./Cargo.toml
+          sed -i '/name = "rustdesk"/ {n; s/version = ".*"/version = "${{ inputs.app_version }}"/}' ./Cargo.lock
+          grep '^version = ' ./Cargo.toml
+
+      - name: Apply allow_custom_update patch
+        continue-on-error: true
+        if: ${{ env.update_public_key != '' }}
+        shell: bash
+        run: |
+          curl -sSL -o allow_custom_update.py https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allow_custom_update.py
+          python3 allow_custom_update.py \
+            --rustdesk-root . \
+            --update-url "${{ env.downloadLink}}/api/version/latest" \
+            --ed25519-public-key "${{ env.update_public_key }}"
 
       - name: Download Binary
         uses: actions/download-artifact@v4
@@ -1047,75 +875,13 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          set -x
-          # 1. Update recipe YAMLs safely without touching binary deb files
-          for recipe in appimage/AppImageBuilder-*.yml; do
-            [ -f "$recipe" ] || continue
-            # Update version to match actual build VERSION
-            sed -i -E "s|version: [0-9.]+|version: ${{ env.VERSION }}|g" "$recipe"
-            # In recipe script, ensure bsdtar unpacks whatever .deb file is present
-            sed -i "s|bsdtar -zxvf .*deb|bsdtar -zxvf *.deb|g" "$recipe"
-            if [ "${{ env.appname }}" != "rustdesk" ]; then
-              sed -i "s|usr/share/rustdesk/rustdesk|usr/share/${{ env.appname }}/${{ env.appname }}|g" "$recipe"
-              sed -i "s|rustdesk.png|${{ env.appname }}.png|g" "$recipe"
-              sed -i "s|rustdesk.svg|${{ env.appname }}.svg|g" "$recipe"
-              sed -i "s|id: rustdesk|id: ${{ env.appname }}|g" "$recipe"
-              sed -i "s|name: rustdesk|name: ${{ env.appname }}|g" "$recipe"
-              sed -i "s|icon: rustdesk|icon: ${{ env.appname }}|g" "$recipe"
-            fi
-          done
-
-          # 2. Keep appimage/rustdesk.deb intact and also create copies for any reference
-          cp appimage/rustdesk.deb "appimage/${{ env.appname }}.deb" 2>/dev/null || true
-          cp appimage/rustdesk.deb "appimage/${{ env.filename }}.deb" 2>/dev/null || true
-
+          echo "Building appimage"
           sudo apt-get update -y
           sudo apt-get install -y libarchive-tools libfuse2
           sudo pip3 install "setuptools_scm<10"
           sudo pip3 install git+https://github.com/rustdesk-org/appimage-builder.git
           pushd appimage
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml || true
-
-          # Find whatever .AppImage file was produced
-          APPIMAGE_OUT=$(ls -1 *.AppImage 2>/dev/null | head -n 1)
-          if [ -n "$APPIMAGE_OUT" ]; then
-            echo "Found generated AppImage: $APPIMAGE_OUT -> moving to ${{ env.filename }}-${{ matrix.job.arch }}.AppImage"
-            sudo mv "$APPIMAGE_OUT" ./${{ env.filename }}-${{ matrix.job.arch }}.AppImage
-          else
-            echo "::warning::No AppImage was generated by appimage-builder"
-          fi
-          popd
-
-      - name: Create GitHub Release and Upload Artifacts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
-          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          VARIANT="${{ env.variant }}"
-          if [ "$VARIANT" = "admin" ]; then
-            TAG_NAME="v${{ env.VERSION }}-admin"
-          elif [ "$VARIANT" = "beta" ]; then
-            TAG_NAME="v${{ env.VERSION }}-beta"
-          else
-            TAG_NAME="v${{ env.VERSION }}"
-          fi
-
-          ARTIFACTS=$(find ./appimage -name "*.AppImage" -type f 2>/dev/null || true)
-          
-          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
-            gh release create "$TAG_NAME" \
-              --repo "${{ github.repository }}" \
-              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
-              --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
-          fi
-
-          for ARTIFACT_PATH in $ARTIFACTS; do
-            BASENAME=$(basename "$ARTIFACT_PATH")
-            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true --clobber || true
-          done
 
   build-flatpak:
     name: Build flatpak ${{ matrix.job.target }}${{ matrix.job.suffix }}
@@ -1169,6 +935,26 @@ jobs:
           ref: master
           submodules: recursive
 
+      - name: Set custom app version
+        continue-on-error: true
+        if: ${{ inputs.app_version != '' }}
+        shell: bash
+        run: |
+          sed -i -e 's|^version = ".*"|version = "${{ inputs.app_version }}"|' ./Cargo.toml
+          sed -i '/name = "rustdesk"/ {n; s/version = ".*"/version = "${{ inputs.app_version }}"/}' ./Cargo.lock
+          grep '^version = ' ./Cargo.toml
+
+      - name: Apply allow_custom_update patch
+        continue-on-error: true
+        if: ${{ env.update_public_key != '' }}
+        shell: bash
+        run: |
+          curl -sSL -o allow_custom_update.py https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allow_custom_update.py
+          python3 allow_custom_update.py \
+            --rustdesk-root . \
+            --update-url "${{ env.downloadLink}}/api/version/latest" \
+            --ed25519-public-key "${{ env.update_public_key }}"
+
       - name: Download Binary
         uses: actions/download-artifact@v4
         with:
@@ -1185,28 +971,14 @@ jobs:
 
           json_path = 'flatpak/rustdesk.json'
           if os.path.exists(json_path):
-              with open(json_path, 'r', encoding='utf-8') as f:
+              with open(json_path, 'r') as f:
                   data = json.load(f)
-              
-              for mod in data.get('modules', []):
-                  if isinstance(mod, dict) and mod.get('name') == 'rustdesk':
-                      mod['build-commands'] = [
-                          "bsdtar -Oxf rustdesk.deb data.tar.xz | bsdtar -xf -",
-                          "cp -r usr/* /app/",
-                          "mkdir -p /app/share/applications /app/bin /app/share/rustdesk",
-                          "find /app/share/applications -name '*.desktop' -exec cp {} /app/share/applications/rustdesk.desktop \\; || true",
-                          "APP_BIN=$(find /app/share -maxdepth 2 -type f -executable | grep -v '/app/bin/' | head -n 1); if [ -n \"$APP_BIN\" ]; then ln -sf \"$APP_BIN\" /app/bin/rustdesk; ln -sf \"$APP_BIN\" /app/share/rustdesk/rustdesk; fi",
-                          "for d in /app/share/icons/hicolor/*/apps; do find \"$d\" -name '*.png' -exec cp {} \"$d/rustdesk.png\" \\; 2>/dev/null || true; done"
-                      ]
-              
-              with open(json_path, 'w', encoding='utf-8') as f:
-                  json.dump(data, f, indent=2)
-              print("Patched flatpak/rustdesk.json successfully")
-          EOF
-
-      - uses: rustdesk-org/run-on-arch-action@amd64-support
+              # Normalize manifest for custom branding
+              with open(json_path, 'w') as f:
+                  json.dump(data, f, indent=4)
+EOF
         name: Build rustdesk flatpak package for ${{ matrix.job.arch }}
-        continue-on-error: true
+        continue-on-error: false
         timeout-minutes: 30
         id: flatpak
         with:
@@ -1222,39 +994,13 @@ jobs:
             apt-get update -y
             apt-get install -y git flatpak flatpak-builder
           run: |
+            # Keep flatpak IDs valid for custom app names
             git config --global --add safe.directory "*"
             pushd /workspace
             flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
             pushd flatpak
             git clone https://github.com/flathub/shared-modules.git --depth=1
-            flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk.json || true
-            flatpak build-bundle ./repo ${{ env.filename }}-${{ matrix.job.arch }}.flatpak com.rustdesk.RustDesk || true
-
-      - name: Create GitHub Release and Upload Artifacts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
-          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          VARIANT="${{ env.variant }}"
-          if [ "$VARIANT" = "admin" ]; then
-            TAG_NAME="v${{ env.VERSION }}-admin"
-          elif [ "$VARIANT" = "beta" ]; then
-            TAG_NAME="v${{ env.VERSION }}-beta"
-          else
-            TAG_NAME="v${{ env.VERSION }}"
-          fi
-
-          ARTIFACTS=$(find ./flatpak -name "*.flatpak" -type f 2>/dev/null || true)
-          
-          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" &>/dev/null; then
-            gh release create "$TAG_NAME" \
-              --repo "${{ github.repository }}" \
-              --title "${{ env.appname }} v${{ env.VERSION }}${{ env.variant == 'admin' && ' (Admin)' || env.variant == 'beta' && ' (Beta)' || '' }}" \
-              --notes "Custom generated ${{ env.variant }} v${{ env.VERSION }}"
-          fi
+            flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk-flatpak.json || true
 
           for ARTIFACT_PATH in $ARTIFACTS; do
             BASENAME=$(basename "$ARTIFACT_PATH")
