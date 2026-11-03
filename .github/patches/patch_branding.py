@@ -3,6 +3,8 @@ import os
 import re
 import sys
 import glob
+import argparse
+import datetime
 
 def sanitize_identifier(name):
     # alphanumeric only, lowercase
@@ -42,32 +44,53 @@ def replace_exact(path, old_str, new_str):
     return False
 
 def main():
-    raw_ver = os.environ.get("VERSION", "").strip()
+    parser = argparse.ArgumentParser(description="Universal Branding & Update Patch")
+    parser.add_argument("--root", default=".", help="Root directory of repository")
+    parser.add_argument("--appname", default=None, help="Application name")
+    parser.add_argument("--compname", default=None, help="Company name")
+    parser.add_argument("--server-host", "--server", dest="server_host", default=None, help="Server host")
+    parser.add_argument("--key", default=None, help="Server public key")
+    parser.add_argument("--api-server", dest="api_server", default=None, help="API server URL")
+    parser.add_argument("--url-link", dest="url_link", default=None, help="Website URL")
+    parser.add_argument("--download-link", dest="download_link", default=None, help="Client download link")
+    parser.add_argument("--variant", default=None, help="Build variant (client, admin, beta)")
+    parser.add_argument("--version", dest="version", default=None, help="Version string")
+    parser.add_argument("--androidappid", default=None, help="Android application ID")
+    args, _ = parser.parse_known_args()
+
+    if args.root and args.root != ".":
+        try:
+            os.chdir(args.root)
+            print(f"[patch_branding] Changed directory to: {args.root}")
+        except Exception as e:
+            print(f"[patch_branding] Warning changing dir to {args.root}: {e}")
+
+    raw_ver = (args.version or os.environ.get("VERSION", "")).strip()
     clean_ver = re.sub(r'^[vV]', '', raw_ver).strip()
     if not clean_ver or clean_ver in ("master", "nightly"):
-        clean_ver = "1.4.15"
+        clean_ver = "1.5.1"
 
-    appname = os.environ.get("appname", "").strip()
+    appname = (args.appname or os.environ.get("appname", "")).strip()
     if not appname:
         appname = "AcilBir"
 
-    compname = os.environ.get("compname", "").strip()
+    compname = (args.compname or os.environ.get("compname", "")).strip()
     if not compname:
         compname = "ABT Bilgisayar Programlama ve Tic.Ltd.Sti."
 
-    url_link = os.environ.get("urlLink", "").strip()
+    url_link = (args.url_link or os.environ.get("urlLink", "")).strip()
     if not url_link:
         url_link = "https://acilbir.com"
 
-    server_host = os.environ.get("server", "").strip()
+    server_host = (args.server_host or os.environ.get("server", "")).strip()
     if not server_host or server_host == "rs-ny.rustdesk.com":
         server_host = "acilbir.com"
 
-    server_key = os.environ.get("key", "").strip()
+    server_key = (args.key or os.environ.get("key", "")).strip()
     if not server_key or server_key == "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=":
         server_key = "ctqWJG3PIl9bk3h3Obs8HPS4wRZzCuZPhsjuSlwzhpE="
 
-    api_server = os.environ.get("apiServer", "").strip()
+    api_server = (args.api_server or os.environ.get("apiServer", "")).strip()
     if not api_server or api_server.startswith("rs-ny.rustdesk.com"):
         api_server = f"https://{server_host}"
     elif not api_server.startswith("http://") and not api_server.startswith("https://"):
@@ -78,13 +101,13 @@ def main():
         update_base_host = f"https://{update_base_host}"
     update_base_host = update_base_host.rstrip('/')
 
-    download_link = os.environ.get("downloadLink", "").strip()
+    download_link = (args.download_link or os.environ.get("downloadLink", "")).strip()
     if not download_link:
         download_link = f"https://{server_host}/api/client-downloads/download/Windows"
 
-    variant = os.environ.get("variant", "client").strip()
+    variant = (args.variant or os.environ.get("variant", "client")).strip()
 
-    android_app_id = os.environ.get("androidappid", "").strip()
+    android_app_id = (args.androidappid or os.environ.get("androidappid", "")).strip()
     clean_id = sanitize_identifier(appname)
     if not android_app_id or android_app_id == "com.carriez.flutter_hbb":
         android_app_id = f"com.{clean_id}.app"
@@ -111,16 +134,31 @@ def main():
     replace_in_file("Cargo.toml", r'(?m)^version\s*=\s*"[^"]+"', f'version = "{clean_ver}"', count=1)
     replace_in_file("Cargo.toml", r'identifier\s*=\s*"[^"]+"', f'identifier = "{bundle_id}"')
     replace_in_file("Cargo.toml", r'name\s*=\s*"RustDesk"', f'name = "{appname}"')
-    replace_in_file("Cargo.toml", r'ProductName\s*=\s*"RustDesk"', f'ProductName = "{appname}"')
-    replace_in_file("Cargo.toml", r'FileDescription\s*=\s*"RustDesk Remote Desktop"', f'FileDescription = "{appname} Remote Desktop"')
-    replace_in_file("Cargo.toml", r'OriginalFilename\s*=\s*"rustdesk.exe"', f'OriginalFilename = "{appname}.exe"')
-    replace_in_file("Cargo.toml", r'description\s*=\s*"RustDesk Remote Desktop"', f'description = "{appname} Remote Desktop"')
+    replace_in_file("Cargo.toml", r'ProductName\s*=\s*"[^"]+"', f'ProductName = "{appname}"')
+    replace_in_file("Cargo.toml", r'FileDescription\s*=\s*"[^"]+"', f'FileDescription = "{appname} Remote Desktop"')
+    replace_in_file("Cargo.toml", r'OriginalFilename\s*=\s*"[^"]+"', f'OriginalFilename = "{appname}.exe"')
+    replace_in_file("Cargo.toml", r'description\s*=\s*"[^"]+"', f'description = "{appname} Remote Desktop"')
 
     replace_in_file("libs/portable/Cargo.toml", r'(?m)^version\s*=\s*"[^"]+"', f'version = "{clean_ver}"', count=1)
-    replace_in_file("libs/portable/Cargo.toml", r'ProductName\s*=\s*"RustDesk"', f'ProductName = "{appname}"')
-    replace_in_file("libs/portable/Cargo.toml", r'FileDescription\s*=\s*"RustDesk Remote Desktop"', f'FileDescription = "{appname} Remote Desktop"')
-    replace_in_file("libs/portable/Cargo.toml", r'OriginalFilename\s*=\s*"rustdesk.exe"', f'OriginalFilename = "{appname}.exe"')
-    replace_in_file("libs/portable/Cargo.toml", r'description\s*=\s*"RustDesk Remote Desktop"', f'description = "{appname} Remote Desktop"')
+    replace_in_file("libs/portable/Cargo.toml", r'ProductName\s*=\s*"[^"]+"', f'ProductName = "{appname}"')
+    replace_in_file("libs/portable/Cargo.toml", r'FileDescription\s*=\s*"[^"]+"', f'FileDescription = "{appname} Remote Desktop"')
+    replace_in_file("libs/portable/Cargo.toml", r'OriginalFilename\s*=\s*"[^"]+"', f'OriginalFilename = "{appname}.exe"')
+    replace_in_file("libs/portable/Cargo.toml", r'description\s*=\s*"[^"]+"', f'description = "{appname} Remote Desktop"')
+
+    current_year = datetime.datetime.now().year
+    for toml_f in ["Cargo.toml", "libs/portable/Cargo.toml"]:
+        if os.path.exists(toml_f):
+            with open(toml_f, 'r', encoding='utf-8') as f:
+                c_content = f.read()
+            if "CompanyName" in c_content:
+                replace_in_file(toml_f, r'(?m)^CompanyName\s*=\s*"[^"]*"', f'CompanyName = "{compname}"')
+            else:
+                replace_exact(toml_f, "[package.metadata.winres]", f'[package.metadata.winres]\nCompanyName = "{compname}"')
+
+            if "LegalCopyright" in c_content:
+                replace_in_file(toml_f, r'(?m)^LegalCopyright\s*=\s*"[^"]*"', f'LegalCopyright = "Copyright © {current_year} {compname}. All rights reserved."')
+            else:
+                replace_exact(toml_f, "[package.metadata.winres]", f'[package.metadata.winres]\nLegalCopyright = "Copyright © {current_year} {compname}. All rights reserved."')
 
     replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk"\s*\r?\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
     replace_in_file("Cargo.lock", r'(?m)(name\s*=\s*"rustdesk-portable-packer"\s*\r?\nversion\s*=\s*)"[^"]+"', rf'\g<1>"{clean_ver}"', count=1)
@@ -149,39 +187,36 @@ def main():
     elif variant == "beta":
         release_suffix = "/beta"
 
+    update_base_host = update_base_host.rstrip('/')
     update_api_url = f"{update_base_host}/api/software/releases/latest{release_suffix}"
 
     print(f"[patch_branding]   Update API URL:  {update_api_url}")
     print(f"[patch_branding]   Channel Suffix:  '{release_suffix}' (variant={variant})")
 
     # --- Rust hbb_common/src/lib.rs: Auto-update URL patching ---
-    replace_in_file("libs/hbb_common/src/lib.rs",
-        r'https://[^"]+/api/software/releases/latest(?:/(?:admin|beta))+',
-        update_api_url)
-    replace_in_file("libs/hbb_common/src/lib.rs",
-        r'https://[^"]+/api/software/releases/latest',
-        update_api_url)
-    replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url)
+    # Try stock RustDesk URL first, then AcilBir URL (source may already be patched)
+    if not replace_exact("libs/hbb_common/src/lib.rs", "https://api.rustdesk.com/version/latest", update_api_url):
+        # Source already has AcilBir URL — use regex to replace any existing channel variant
+        replace_in_file("libs/hbb_common/src/lib.rs",
+            r'https://[^"]+/api/software/releases/latest(?:/(?:admin|beta))?',
+            update_api_url)
+    replace_exact("libs/hbb_common/src/lib.rs", "https://acilbir.com/api/software/releases/latest", update_api_url)
     
-    # Patch get_version_number to support 'v' prefix and patch numbers during CI
-    # Try stock version first (for fresh RustDesk checkout)
+    # Patch get_version_number in hbb_common to support 'v' prefix and patch numbers during CI
     stock_get_ver = "pub fn get_version_number(v: &str) -> i64 {\n    let mut versions = v.split('-');"
     patched_get_ver = "pub fn get_version_number(v: &str) -> i64 {\n    let clean_v = v.trim().trim_start_matches(|c| c == 'v' || c == 'V');\n    let mut versions = clean_v.split('-');"
     replace_exact("libs/hbb_common/src/lib.rs", stock_get_ver, patched_get_ver)
-    # If source already has the patched version, this is a no-op (idempotent)
 
     stock_patch_part = "    if let Some(v) = versions.next() {\n        n += v.parse::<i64>().unwrap_or(0);\n    }"
     patched_patch_part = "    if let Some(patch_part) = versions.next() {\n        let num_str: String = patch_part.chars().take_while(|c| c.is_ascii_digit()).collect();\n        if let Ok(patch_num) = num_str.parse::<i64>() {\n            n += patch_num;\n        }\n    }"
     replace_exact("libs/hbb_common/src/lib.rs", stock_patch_part, patched_patch_part)
 
     # --- Flutter common.dart: Auto-update URL patching ---
-    replace_in_file("flutter/lib/common.dart",
-        r"https://[^'\"]+/api/software/releases/latest(?:/(?:admin|beta))+",
-        update_api_url)
-    replace_in_file("flutter/lib/common.dart",
-        r"https://[^'\"]+/api/software/releases/latest",
-        update_api_url)
-    replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url)
+    if not replace_exact("flutter/lib/common.dart", "https://api.rustdesk.com/version/latest", update_api_url):
+        replace_in_file("flutter/lib/common.dart",
+            r"https://[^'\"]+/api/software/releases/latest(?:/(?:admin|beta))?",
+            update_api_url)
+    replace_exact("flutter/lib/common.dart", "https://acilbir.com/api/software/releases/latest", update_api_url)
     replace_exact("src/common.rs", 'name != "RustDesk" && name != "AcilBir"', f'name != "RustDesk" && name != "{appname}"')
     replace_exact("src/common.rs", 'name.eq("RustDesk") || name.eq("AcilBir")', f'name.eq("RustDesk") || name.eq("{appname}")')
 
@@ -201,12 +236,21 @@ def main():
     if os.path.exists(rc_file):
         replace_in_file(rc_file, r'PRODUCT_VERSION\s+[0-9,]+', f'PRODUCT_VERSION {win_ver_comma}')
         replace_in_file(rc_file, r'FILE_VERSION\s+[0-9,]+', f'FILE_VERSION {win_ver_comma}')
+        replace_in_file(rc_file, r'VALUE "CompanyName",\s*"[^"]*"', f'VALUE "CompanyName", "{compname}"')
+        replace_in_file(rc_file, r'VALUE "LegalCopyright",\s*"[^"]*"', f'VALUE "LegalCopyright", "Copyright © {current_year} {compname}. All rights reserved."')
+        replace_in_file(rc_file, r'VALUE "ProductName",\s*"[^"]*"', f'VALUE "ProductName", "{appname}"')
+        replace_in_file(rc_file, r'VALUE "FileDescription",\s*"[^"]*"', f'VALUE "FileDescription", "{appname} Remote Desktop"')
+        replace_in_file(rc_file, r'VALUE "InternalName",\s*"[^"]*"', f'VALUE "InternalName", "{clean_id}"')
+        replace_in_file(rc_file, r'VALUE "OriginalFilename",\s*"[^"]*"', f'VALUE "OriginalFilename", "{appname}.exe"')
         replace_exact(rc_file, '"Purslane Tech Pte. Ltd."', f'"{compname}"')
         replace_exact(rc_file, '"Purslane Ltd."', f'"{compname}"')
         replace_exact(rc_file, '"RustDesk Remote Desktop"', f'"{appname} Remote Desktop"')
         replace_exact(rc_file, '"RustDesk"', f'"{appname}"')
         replace_exact(rc_file, '"rustdesk.exe"', f'"{appname}.exe"')
         replace_exact(rc_file, '"rustdesk"', f'"{clean_id}"')
+
+    replace_in_file("res/msi/preprocess.py", r'default="Purslane Tech Pte\. Ltd\."', f'default="{compname}"')
+    replace_in_file("res/msi/preprocess.py", r'default="ABT Bilgisayar Programlama ve Tic\.Ltd\.Sti\."', f'default="{compname}"')
 
     replace_exact("src/platform/windows.rs", 'const SERVICE_NAME: &str = "RustDesk";', f'const SERVICE_NAME: &str = "{appname}";')
     replace_exact("src/platform/windows.rs", 'const SERVICE_NAME: &str = "rustdesk";', f'const SERVICE_NAME: &str = "{clean_id}";')
@@ -271,12 +315,19 @@ def main():
     # 6. LINUX PLATFORM
     # -------------------------------------------------------------
     for dt in ["res/rustdesk.desktop", "res/rustdesk-link.desktop"]:
-        replace_in_file(dt, r'Name\s*=.*', f'Name={appname}')
-        replace_in_file(dt, r'Exec\s*=/usr/bin/rustdesk', f'Exec=/usr/bin/{clean_id}')
-        replace_in_file(dt, r'Icon\s*=.*', f'Icon={clean_id}')
+        replace_in_file(dt, r'(?m)^Name\s*=.*', f'Name={appname}')
+        replace_in_file(dt, r'(?m)^GenericName\s*=.*', f'GenericName={appname}')
+        replace_in_file(dt, r'(?m)^Comment\s*=.*', f'Comment={appname} Remote Desktop')
+        replace_in_file(dt, r'(?m)^Exec\s*=(/usr/bin/)?rustdesk', f'Exec={clean_id}')
+        replace_in_file(dt, r'(?m)^Icon\s*=.*', f'Icon={clean_id}')
+        replace_in_file(dt, r'(?m)^StartupWMClass\s*=.*', f'StartupWMClass={clean_id}')
 
     replace_in_file("res/rustdesk.service", r'Description\s*=.*', f'Description={appname} Remote Desktop Service')
-    replace_in_file("res/rustdesk.service", r'ExecStart\s*=/usr/bin/rustdesk\s+--service', f'ExecStart=/usr/bin/{clean_id} --service')
+    replace_in_file("res/rustdesk.service", r'ExecStart\s*=(/usr/bin/)?rustdesk\s+--service', f'ExecStart=/usr/bin/{clean_id} --service')
+
+    linux_cmake = "flutter/linux/CMakeLists.txt"
+    if os.path.exists(linux_cmake):
+        replace_exact(linux_cmake, 'set(APPLICATION_ID "com.carriez.flutter_hbb")', f'set(APPLICATION_ID "{bundle_id}")')
 
     replace_in_file("res/PKGBUILD", r'pkgver=.*', f'pkgver={clean_ver}')
     replace_in_file("res/rpm.spec", r'Version:\s*.*', f'Version:    {clean_ver}')
@@ -293,6 +344,9 @@ def main():
     replace_exact("flutter/lib/desktop/widgets/tabbar_widget.dart", '"RustDesk"', f'"{appname}"')
     replace_exact("flutter/lib/web/bridge.dart", "return 'RustDesk';", f"return '{appname}';")
     replace_exact("flutter/lib/web/bridge.dart", 'name != "RustDesk" && name != "AcilBir"', f'name != "RustDesk" && name != "{appname}"')
+    replace_in_file("flutter/lib/desktop/pages/desktop_setting_page.dart",
+        r'Copyright © \$\{DateTime\.now\(\)\.toString\(\)\.substring\(0, 4\)\} [^\n\\]+',
+        f'Copyright © ${{DateTime.now().toString().substring(0, 4)}} {compname}')
     replace_exact("flutter/lib/desktop/pages/desktop_setting_page.dart", "Purslane Tech Pte. Ltd.", compname)
     replace_exact("flutter/lib/desktop/pages/desktop_setting_page.dart", "Purslane Ltd.", compname)
 

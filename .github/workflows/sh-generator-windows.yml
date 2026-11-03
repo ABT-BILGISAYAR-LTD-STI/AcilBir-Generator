@@ -247,7 +247,15 @@ jobs:
           fi
           CLEAN_API_SERVER="${CLEAN_API_SERVER%/}"
 
-          python3 patch_branding.py \
+          PATCH_SCRIPT="patch_branding.py"
+          if [ ! -f "$PATCH_SCRIPT" ]; then
+            if [ -f "$GITHUB_WORKSPACE/.github/patches/patch_branding.py" ]; then
+              PATCH_SCRIPT="$GITHUB_WORKSPACE/.github/patches/patch_branding.py"
+            elif [ -f ".github/patches/patch_branding.py" ]; then
+              PATCH_SCRIPT=".github/patches/patch_branding.py"
+            fi
+          fi
+          python3 "$PATCH_SCRIPT" \
             --root . \
             --appname "${{ env.appname }}" \
             --compname "${{ env.compname }}" \

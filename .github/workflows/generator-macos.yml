@@ -198,7 +198,15 @@ jobs:
           CLEAN_COMPNAME="${{ env.compname }}"
           if [ -z "$CLEAN_COMPNAME" ]; then CLEAN_COMPNAME="ABT Bilgisayar Programlama ve Tic.Ltd.Sti."; fi
 
-          python3 patch_branding.py \
+          PATCH_SCRIPT="patch_branding.py"
+          if [ ! -f "$PATCH_SCRIPT" ]; then
+            if [ -f "$GITHUB_WORKSPACE/.github/patches/patch_branding.py" ]; then
+              PATCH_SCRIPT="$GITHUB_WORKSPACE/.github/patches/patch_branding.py"
+            elif [ -f ".github/patches/patch_branding.py" ]; then
+              PATCH_SCRIPT=".github/patches/patch_branding.py"
+            fi
+          fi
+          python3 "$PATCH_SCRIPT" \
             --root . \
             --appname "${{ env.appname }}" \
             --compname "$CLEAN_COMPNAME" \
