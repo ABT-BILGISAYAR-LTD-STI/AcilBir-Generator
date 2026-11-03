@@ -457,16 +457,6 @@ jobs:
       - name: override download link for Android platform
         shell: bash
         run: |
-          if [ "${{ env.variant }}" = "admin" ]; then
-            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/admin-Android"
-          elif [ "${{ env.variant }}" = "beta" ]; then
-            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/beta-Android"
-          else
-            DOWNLOAD_URL="${{ env.apiServer }}/api/client-downloads/download/Android"
-          fi
-          echo "downloadLink=${DOWNLOAD_URL}" >> $GITHUB_ENV
-        shell: bash
-        run: |
           # Platform-specific downloadLink override — ensures client updater
           # downloads the correct binary regardless of form input.
           # Admin/beta variants use prefixed platform names to match DB records.
@@ -720,87 +710,6 @@ jobs:
           path: ./signed-apk/*
           retention-days: 7
           if-no-files-found: warn
-
-      - name: Create GitHub Release and Upload Artifacts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          TAG_NAME="v${{ env.VERSION }}"
-          if [ -z "${{ env.VERSION }}" ] || [ "${{ env.VERSION }}" = "master" ] || [ "${{ env.VERSION }}" = "nightly" ]; then
-            TAG_NAME="v1.5.0-${{ env.uuid }}"
-          fi
-
-          TITLE="AcilBir ${{ env.VERSION }}"
-          if [ "${{ env.variant }}" = "admin" ]; then
-            TITLE="AcilBir (Admin) ${{ env.VERSION }}"
-          elif [ "${{ env.variant }}" = "beta" ]; then
-            TITLE="AcilBir (Beta) ${{ env.VERSION }}"
-          fi
-
-          echo "Ensuring release exists for tag $TAG_NAME..."
-          gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
-            gh release create "$TAG_NAME" \
-              --repo "${{ github.repository }}" \
-              --title "$TITLE" \
-              --notes "Automated build for AcilBir ${{ env.VERSION }} (${{ env.variant }})" \
-              --prerelease=false || true
-
-          for file in ./signed-apk/*.apk; do
-            [ -f "$file" ] || continue
-            BASENAME=$(basename "$file")
-            echo "Uploading $BASENAME to GitHub Release $TAG_NAME..."
-            gh release upload "$TAG_NAME" "$file" --repo "${{ github.repository }}" --clobber || true
-
-            RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/$BASENAME"
-            AUTH_TOKEN="${{ env.token }}"
-            [ -z "$AUTH_TOKEN" ] && AUTH_TOKEN="${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}"
-
-            API_SERVER="${{ env.apiServer }}"
-            if [ -n "$API_SERVER" ]; then
-              URL_CANDIDATES=()
-              if [[ "$API_SERVER" == http://* ]] || [[ "$API_SERVER" == https://* ]]; then
-                URL_CANDIDATES+=("${API_SERVER%/}/api/save_custom_client")
-              else
-                URL_CANDIDATES+=("https://$API_SERVER/api/save_custom_client")
-                URL_CANDIDATES+=("http://$API_SERVER/api/save_custom_client")
-              fi
-
-              for TARGET_URL in "${URL_CANDIDATES[@]}"; do
-                HTTP_CODE=$(curl -k -s -L --post301 --post302 --post303 -o /dev/null -w "%{http_code}" \
-                  --connect-timeout 10 --max-time 20 -X POST \
-                  -H "Authorization: Bearer $AUTH_TOKEN" \
-                  -H "Content-Type: application/x-www-form-urlencoded" \
-                  -d "github_release_url=$RELEASE_URL" \
-                  -d "uuid=${{ env.uuid }}" \
-                  -d "filename=$BASENAME" \
-                  -d "version=${{ env.VERSION }}" \
-                  -d "variant=${{ env.variant }}" \
-                  "$TARGET_URL" 2>/dev/null) || HTTP_CODE="000"
-                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then break; fi
-              done
-            fi
-
-            GENURL="${{ env.genurl }}"
-            if [ -n "$GENURL" ] && [ -n "${{ env.uuid }}" ]; then
-              GEN_CLEAN="${GENURL%/}"
-              curl -k -s -L --post301 --post302 --post303 -o /dev/null \
-                --connect-timeout 8 --max-time 15 -X POST \
-                -H "Authorization: Bearer $AUTH_TOKEN" \
-                -H "Content-Type: application/x-www-form-urlencoded" \
-                -d "uuid=${{ env.uuid }}" \
-                -d "filename=$BASENAME" \
-                "$GEN_CLEAN/save_custom_client" 2>/dev/null || true
-            fi
-          done
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output-${{ env.uuid }}
-          path: |
-            ./signed-apk/*.apk
-            ./flutter/build/app/outputs/flutter-apk/*.apk
-          retention-days: 7
 
       - name: Create GitHub Release and Upload Artifacts
         env:

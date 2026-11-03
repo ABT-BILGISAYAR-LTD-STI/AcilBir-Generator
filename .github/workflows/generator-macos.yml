@@ -134,14 +134,13 @@ jobs:
           repository: HalilUral14/AcilBir
           ref: ${{ steps.resolve_ref.outputs.git_ref }}
           submodules: recursive
+
+      - name: Install macOS build dependencies
         shell: bash
         run: |
           brew install imagemagick potrace nasm cmake gcc wget ninja
           echo "$(brew --prefix imagemagick)/bin" >> $GITHUB_PATH
 
-      - name: Apply macOS branding and dynamic versioning
-        shell: bash
-        run: |
       - name: Apply macOS branding and dynamic versioning
         shell: bash
         run: |

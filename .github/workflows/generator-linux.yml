@@ -725,12 +725,8 @@ jobs:
         run: |
           cp ./res/rustdesk-${{ env.VERSION }}-0-x86_64.pkg.tar.zst ./output/${{ env.filename }}-${{ matrix.job.arch }}.pkg.tar.zst
 
-      - name: Upload deb artifact for appimage and flatpak
+      - name: Upload deb
         uses: actions/upload-artifact@v4
-        with:
-          name: rustdesk-deb-${{ matrix.job.arch }}
-          path: ./rustdesk*.deb
-          retention-days: 1
         if: env.UPLOAD_ARTIFACT == 'true'
         with:
           name: ${{ env.filename }}-${{ matrix.job.arch }}.deb
