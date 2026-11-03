@@ -547,8 +547,14 @@ jobs:
           try {
             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip -ErrorAction SilentlyContinue
             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_idd_driver_v4-1.4.zip -OutFile rustdesk_idd_driver_v4-1.4.zip -ErrorAction SilentlyContinue
-            Expand-Archive -Path rustdesk_printer_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
-            Expand-Archive -Path rustdesk_idd_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
+            if (Test-Path rustdesk_printer_driver_v4-1.4.zip) {
+              Expand-Archive -Path rustdesk_printer_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path rustdesk_idd_driver_v4-1.4.zip) {
+              Expand-Archive -Path rustdesk_idd_driver_v4-1.4.zip -DestinationPath rustdesk -Force -ErrorAction SilentlyContinue
+            }
+          } catch {
+            Write-Host "Notice: driver package setup skipped"
           }
 
       - name: icon stuff
