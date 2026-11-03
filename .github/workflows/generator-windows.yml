@@ -361,7 +361,6 @@ jobs:
             [[ "3.24.5" == "$(flutter --version | head -n 1 | awk '{print $2}')" ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff || true
             cd -
           fi
-          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
@@ -514,6 +513,12 @@ jobs:
           echo "=== Checking Bridge Files ==="
           ls -la ./flutter/lib/generated_bridge.dart || echo "WARNING: generated_bridge.dart not found!"
           ls -la ./src/bridge_generated.rs || echo "WARNING: bridge_generated.rs not found!"
+          
+          if ! command -v flutter &>/dev/null; then
+            if [ -n "$FLUTTER_ROOT" ] && [ -f "$FLUTTER_ROOT/bin/flutter" ]; then
+              export PATH="$FLUTTER_ROOT/bin:$PATH"
+            fi
+          fi
           
           pushd flutter
           flutter pub get
