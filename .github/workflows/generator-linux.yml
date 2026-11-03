@@ -973,18 +973,9 @@ jobs:
         shell: bash
         run: |
           mv ${{ env.filename }}-${{ matrix.job.arch }}.deb flatpak/rustdesk.deb
+          python3 -c "import json, os; p='flatpak/rustdesk.json'; (os.path.exists(p) and json.dump(json.load(open(p)), open(p, 'w'), indent=4)) if os.path.exists(p) else None" || true
 
-          python3 - << 'EOF'
-          import json, os
-
-          json_path = 'flatpak/rustdesk.json'
-          if os.path.exists(json_path):
-              with open(json_path, 'r') as f:
-                  data = json.load(f)
-              # Normalize manifest for custom branding
-              with open(json_path, 'w') as f:
-                  json.dump(data, f, indent=4)
-EOF
+      - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8
         name: Build rustdesk flatpak package for ${{ matrix.job.arch }}
         continue-on-error: false
         timeout-minutes: 30
@@ -1010,10 +1001,27 @@ EOF
             git clone https://github.com/flathub/shared-modules.git --depth=1
             flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk-flatpak.json || true
 
-          for ARTIFACT_PATH in $ARTIFACTS; do
-            BASENAME=$(basename "$ARTIFACT_PATH")
-            gh release upload "$TAG_NAME" "$ARTIFACT_PATH" --repo "${{ github.repository }}" --clobber || true --clobber || true
-          done
+      - name: send file to rdgen server
+        if: ${{ (env.generator == 'true' || env.rdgen == 'true') }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 15
+          shell: bash
+          command: |
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./flatpak/${{ env.filename }}-${{ matrix.job.arch }}.flatpak" -F "uuid=${{ env.uuid }}" ${{ env.genurl }}/save_custom_client || true
+
+      - name: send file to api server
+        if: ${{ (env.generator == 'false' || env.rdgen == 'false') }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 15
+          shell: bash
+          command: |
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./flatpak/${{ env.filename }}-${{ matrix.job.arch }}.flatpak" ${{ env.apiServer }}/api/save_custom_client || true
 
   cleanup:
     needs: [build-rustdesk-linux, build-appimage, build-flatpak]

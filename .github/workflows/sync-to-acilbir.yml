@@ -1,11 +1,11 @@
-# ═══════════════════════════════════════════════════════════════════════════════
-# AcilBir-Generator Repo → AcilBir.com Otomatik Senkronizasyon
-# ═══════════════════════════════════════════════════════════════════════════════
-# AcilBir-Generator reposuna push yapıldığında, değişiklikleri
-# AcilBir.com monorepo'sundaki acilbir-pro/acilbir-generator/ klasörüne yansıtır.
-# Loop önleme: [skip-sync] marker'lı commit'lerde çalışmaz.
+# ===============================================================================
+# AcilBir-Generator Repo -> AcilBir.com Otomatik Senkronizasyon
+# ===============================================================================
+# AcilBir-Generator reposuna push yapildiginda, degisiklikleri
+# AcilBir.com monorepo'sundaki acilbir-pro/acilbir-generator/ klasorune yansitir.
+# Loop onleme: [skip-sync] marker'li commit'lerde calismaz.
 
-name: Sync AcilBir-Generator → AcilBir.com
+name: Sync AcilBir-Generator to AcilBir.com
 
 on:
   push:
@@ -13,7 +13,7 @@ on:
 
 jobs:
   sync-to-acilbir:
-    name: 🔄 Sync to AcilBir.com
+    name: Sync to AcilBir.com
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[skip-sync]')"
     steps:
@@ -31,11 +31,11 @@ jobs:
 
       - name: Sync files
         run: |
-          # AcilBir.com'daki generator klasörünü temizle (.git hariç, zaten yok)
+          # AcilBir.com'daki generator klasorunu temizle (.git haric, zaten yok)
           rm -rf acilbir/acilbir-pro/acilbir-generator
           mkdir -p acilbir/acilbir-pro/acilbir-generator
 
-          # generator reposunun içeriğini kopyala (.git hariç)
+          # generator reposunun icerigini kopyala (.git haric)
           rsync -a --exclude='.git' rdgen/ acilbir/acilbir-pro/acilbir-generator/
 
       - name: Commit and push
@@ -46,10 +46,10 @@ jobs:
 
           git add -A
           if git diff --cached --quiet; then
-            echo "✅ Zaten senkronize, değişiklik yok."
+            echo "Zaten senkronize, degisiklik yok."
             exit 0
           fi
 
           git commit -m "[skip-sync] Sync from AcilBir-Generator ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
           git push
-          echo "✅ AcilBir.com reposuna senkronize edildi."
+          echo "AcilBir.com reposuna senkronize edildi."

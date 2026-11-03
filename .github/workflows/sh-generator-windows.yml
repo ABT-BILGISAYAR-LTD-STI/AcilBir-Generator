@@ -264,7 +264,7 @@ jobs:
           retry_wait_seconds: 15
           shell: pwsh
           command: |
-          echo "Updater check verified"
+            echo "Updater check verified"
           
       - name: magick stuff
         if: ${{ env.iconlink_url != 'false' }}
