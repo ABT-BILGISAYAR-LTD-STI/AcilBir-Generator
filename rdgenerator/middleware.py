@@ -11,9 +11,6 @@ EXEMPT_PATHS = [
     '/cleanzip',
     '/download',
     '/api/download',
-    '/updategh',
-    '/creategh',
-    '/startgh',
     '/get_zip',
 ]
 

@@ -855,11 +855,14 @@ def save_custom_client(request):
 
 
 def cleanup_secrets(request):
-    data = json.loads(request.body)
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        return HttpResponse("Invalid JSON", status=400)
     my_uuid = data.get('uuid')
     
-    if not my_uuid:
-        return HttpResponse("Missing UUID", status=400)
+    if not my_uuid or not _UUID_RE.match(str(my_uuid)):
+        return HttpResponse("Invalid or missing UUID", status=400)
 
     temp_dir = os.path.join('temp_zips')
     
