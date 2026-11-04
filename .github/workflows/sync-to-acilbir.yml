@@ -51,5 +51,6 @@ jobs:
           fi
 
           git commit -m "[skip-sync] Sync from AcilBir-Generator ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          git pull --rebase origin main || true
           git push
           echo "AcilBir.com reposuna senkronize edildi."

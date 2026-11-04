@@ -598,7 +598,12 @@ jobs:
             export CARGO_INCREMENTAL=0
             export DEB_ARCH=${{ matrix.job.deb_arch }}
             mkdir -p flutter/tmpdeb/usr/share/rustdesk
-            cp ./custom_.txt ./flutter/tmpdeb/usr/share/rustdesk/custom_.txt
+            if [ -f ./custom_.txt ]; then
+              cp ./custom_.txt ./flutter/tmpdeb/usr/share/rustdesk/custom_.txt
+            else
+              echo -n "${{ env.custom }}" > ./flutter/tmpdeb/usr/share/rustdesk/custom_.txt
+              echo -n "${{ env.custom }}" > ./custom_.txt
+            fi
             if [[ "${{ env.logolink_url }}" != "false" ]]; then
               wget -O ./flutter/assets/logo.png ${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }}
               cp ./flutter/assets/logo.png ./flutter/assets/logo_dark.png
